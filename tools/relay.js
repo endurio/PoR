@@ -21,9 +21,13 @@ const test_txs = [
   '045e6bcc00bd9aaf9eaf0fd3c6365ad45fd9cd7d2e85d805eeb43fb8d59faa80',
 ]
 
-function parse(script) {
+function extractWitness(input) {
+  if (input.witness.length > 0) {
+    var chunks = input.witness
+  } else {
+    var chunks = bitcoin.script.decompile(input.script)
+  }
   const ret = {}
-  const chunks = bitcoin.script.decompile(script)
   for (const chunk of chunks) {
     if (Buffer.isBuffer(chunk) && bitcoin.script.isCanonicalScriptSignature(chunk)) {
       ret.sig = bitcoin.script.signature.decode(chunk)
@@ -43,25 +47,7 @@ for (const txHash of test_txs) {
     const input = tx.ins[i]
     // console.log(`\tinput`, input)
     const script = input.script
-    if (script.length > 0) {
-      console.log(`script`, web3.utils.bytesToHex(script))
-      var { sig, pubKey } = parse(script)
-    } else if (input.witness.length === 2) {
-      console.log(`witness`)
-      for (const w of input.witness) {
-        console.log(`\t`, web3.utils.bytesToHex(w))
-      }
-      let chunk = input.witness[0]
-      if (Buffer.isBuffer(chunk) && bitcoin.script.isCanonicalScriptSignature(chunk)) {
-        var sig = bitcoin.script.signature.decode(chunk)
-      }
-      chunk = input.witness[1]
-      if (Buffer.isBuffer(chunk) && bitcoin.script.isCanonicalPubKey(chunk)) {
-        var pubKey = chunk
-      }
-      // witness
-      // tx.hashForWitnessV0(i, prevOutput.witnessScript, prevOutput.value, sig.hashType)
-    }
+    const { sig, pubKey } = extractWitness(input)
     // console.log(`\t\tsig`, sig)
     console.log(`\t\tpubkey`, web3.utils.bytesToHex(pubKey))
     if (!sig) {
