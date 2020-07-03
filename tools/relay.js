@@ -82,6 +82,11 @@ for (const txHash of test_txs) {
     }
     const inputTx = bitcoin.Transaction.fromHex(inputTxHex)
     const prevOutput = inputTx.outs[input.index]
+    if (prevOutput.script.indexOf(pkh) < 0) {
+      console.error(`\tFAILED: prev output script does not contain PKH`)
+    } else {
+      console.log(`\tCHECKED`)
+    }
     console.log(`\t\t\tprev output script`, web3.utils.bytesToHex(prevOutput.script))
     if (script.length > 0) {
       var hash = tx.hashForSignature(i, prevOutput.script, sig.hashType)
