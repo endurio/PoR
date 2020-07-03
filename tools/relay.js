@@ -19,8 +19,8 @@ const txs = {
 }
 
 const test_txs = [
-  '82616192e0de11fc1a7143becbc02739686fd9b4ab58b15505cd81432dfc8b4a',
-  '045e6bcc00bd9aaf9eaf0fd3c6365ad45fd9cd7d2e85d805eeb43fb8d59faa80',
+  '82616192e0de11fc1a7143becbc02739686fd9b4ab58b15505cd81432dfc8b4a', // P2PKH
+  '045e6bcc00bd9aaf9eaf0fd3c6365ad45fd9cd7d2e85d805eeb43fb8d59faa80', // P2WPKH
   // '5841ff53611ce55facbc57d18c0563576af9e5453f2dd1406f4324a0cee02a18', // unsupported P2WSH
 ]
 
@@ -64,11 +64,13 @@ for (const txHash of test_txs) {
       continue
     }
     console.log(`\t\thashType`, sig.hashType)
-    console.log(`\t\tsigR`, web3.utils.bytesToHex(sig.signature.subarray(0, 32)))
-    console.log(`\t\tsigS`, web3.utils.bytesToHex(sig.signature.subarray(32)))
+    console.log(`\t\tsigR\t`, web3.utils.bytesToHex(sig.signature.subarray(0, 32)))
+    console.log(`\t\tsigS\t`, web3.utils.bytesToHex(sig.signature.subarray(32)))
     const keyPair = bitcoin.ECPair.fromPublicKey(pubKey);
     // const keyPair = bitcoin.ECPair.fromPrivateKey(new Buffer('b8c594fe66aea07ed3f3b8ca10e3e686b2cdcaa7f49a1e0f20d386ef13ba634d', 'hex'))
-    console.log(`\t\tpubkey`, web3.utils.bytesToHex(keyPair.publicKey))
+    console.log(`\t\tpubkey\t`, web3.utils.bytesToHex(keyPair.publicKey))
+    const pkh = bitcoin.crypto.hash160(keyPair.publicKey)
+    console.log(`\t\tPKH\t`, web3.utils.bytesToHex(pkh))
     // console.log(input.index, web3.utils.bytesToHex(script), sig.hashType)
 
     // input tx hash is recorded reversed in the tx binary
@@ -80,13 +82,16 @@ for (const txHash of test_txs) {
     }
     const inputTx = bitcoin.Transaction.fromHex(inputTxHex)
     const prevOutput = inputTx.outs[input.index]
+    console.log(`\t\t\tprev output script`, web3.utils.bytesToHex(prevOutput.script))
     if (script.length > 0) {
-      console.log(`\t\t\tprev output script`, web3.utils.bytesToHex(prevOutput.script))
       var hash = tx.hashForSignature(i, prevOutput.script, sig.hashType)
     } else {
       const signingScript = bitcoin.payments.p2pkh({ hash: prevOutput.script.slice(2) }).output;
-      console.log(`\t\t\tprev witness script`, web3.utils.bytesToHex(signingScript))
+      console.log(`\t\t\tsigning script`, web3.utils.bytesToHex(signingScript))
       var hash = tx.hashForWitnessV0(i, signingScript, prevOutput.value, sig.hashType)
+
+      const address = bitcoin.payments.p2wpkh({ pubkey: pubKey }).address
+      console.log(`\t\t\tP2WPKH\t`, address)
     }
     console.log(`\t\thash for signature`, web3.utils.bytesToHex(hash))
     const valid = keyPair.verify(hash, sig.signature)
