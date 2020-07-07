@@ -41,7 +41,7 @@ contract PoR {
         return;
     }
 
-    function relayBlock(
+    function commitBlock(
         bytes calldata _header,
         bytes32 _outdatedBlockHash   // optional outdated block to clean up for gas re-fund
     ) external {
@@ -55,7 +55,7 @@ contract PoR {
         // TODO: restrict to only recent timestamp
 
         BlockHeader storage header = headers[_blockHash];
-        require(header.merkleRoot == 0, "block exists");
+        require(header.merkleRoot == 0, "block committed");
 
         header.merkleRoot = _header.extractMerkleRootLE().toBytes32();
         header.timestamp = _header.extractTimestamp();
@@ -74,7 +74,7 @@ contract PoR {
 
     /// @param _intermediateNodes   The proof's intermediate nodes (digests between leaf and root)
     /// @param _index               The leaf's index in the tree (0-indexed)
-    function relayTx(
+    function commitTx(
         bytes32 _blockHash,
         bytes calldata _intermediateNodes,
         uint _index,
@@ -109,7 +109,7 @@ contract PoR {
         if (_tx.id != 0) {
             uint oldRank = txRank(_blockHash, _tx.id);
             uint newRank = txRank(_blockHash, txId);
-            require(newRank < oldRank, "better transaction committed");
+            require(newRank < oldRank, "not better than commited tx");
         }
         // store the outpoint to claim the reward later
         _tx.outpointTxLE = input.extractInputTxIdLE();
