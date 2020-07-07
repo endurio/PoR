@@ -14,7 +14,6 @@ contract PoR {
 
     mapping(bytes20 => address) internal pkhs; // pubkey bytes32 => address
     mapping(bytes32 => BlockHeader) internal headers;
-    mapping(bytes32 => Transaction) internal txs;
     mapping(bytes => Brand) internal brands;
 
     struct Brand {
@@ -28,12 +27,11 @@ contract PoR {
         uint32  timestamp;
 
         // PoR data
-        mapping(bytes => bytes32) bestTxId; // keccak256(brand.memo) => best tx
+        mapping(bytes => Transaction) bestTx; // brand.memo => best tx
     }
 
     struct Transaction {
-        // bytes32 id;
-        bytes32 blockHash;
+        bytes32 id;
         bytes32 outpointTxLE;
         bytes outpointIndexLE; // 4 bytes LE integer
         bytes memo;
@@ -100,26 +98,23 @@ contract PoR {
         bytes memory output = _vout.extractOutputAtIndex(_outputIndex);
         bytes memory memo = output.extractOpReturnData();
         require(memo.length > 0, "empty tx memo");
-        bytes32 bestTxIdBefore = header.bestTxId[memo];
-        if (bestTxIdBefore != 0) {
-            uint oldRank = txRank(_blockHash, bestTxIdBefore);
-            uint newRank = txRank(_blockHash, txId);
-            require(newRank < oldRank, "better transaction committed");
-            delete txs[bestTxIdBefore]; // clean up losing tx
-            header.bestTxId[memo] = txId; // record the new best tx id
-        }
 
         // Brand memory brand = brands[tx.memo];
         // require(brand.owner != 0, "no such branch memo");
         // TODO: handle manual agent address in tx memo
 
-        Transaction storage _tx = txs[txId];
-
         bytes memory input = _vin.extractInputAtIndex(_inputIndex);
+
+        Transaction storage _tx = header.bestTx[memo];
+        if (_tx.id != 0) {
+            uint oldRank = txRank(_blockHash, _tx.id);
+            uint newRank = txRank(_blockHash, txId);
+            require(newRank < oldRank, "better transaction committed");
+        }
         // store the outpoint to claim the reward later
         _tx.outpointTxLE = input.extractInputTxIdLE();
         _tx.outpointIndexLE = input.extractTxIndexLE();
-        _tx.blockHash = _blockHash;
+        _tx.id = txId;
     }
 
     function registerPKH(
