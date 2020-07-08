@@ -63,14 +63,20 @@ contract PoR {
         require(header.merkleRoot != 0, "no such block");
         Transaction storage winner = header.winner[_memoHash];
         require(winner.id != 0, "no such tx");
+
         bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
+        // TODO: endianness
         require(winner.outpointTxLE == txId, "outpoint tx mismatch");
+
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         bytes20 pkh = extractPKH(output, _pkhIdx);
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
+
         // TODO: mint the token to miner
+        // reward = brand.reward * header.target / RATE
         delete header.winner[_memoHash];
+
         if (header.minable > 1) {
             header.minable--;
         } else {
@@ -101,7 +107,7 @@ contract PoR {
     function commitTx(
         bytes32 _blockHash,
         bytes calldata _merkleProof,
-        uint _merkleIndex,
+        uint _merkleIndex,      // TODO: pack this
         bytes calldata _vin,    // tx input vector
         bytes calldata _vout,   // tx output vector
         uint32 _version,        // tx version
@@ -155,7 +161,7 @@ contract PoR {
         bytes32 _blockHash = _header.hash256View();
         require(uint(_blockHash).reverseUint256() <= target, "insufficient work for block");
 
-        // TODO: restrict to only recent timestamp
+        // TODO: verify block timestamp > genesis timestamp
 
         BlockHeader storage header = headers[_blockHash];
         require(header.merkleRoot == 0, "block committed");
