@@ -30,8 +30,8 @@ contract PoR {
         uint32  timestamp;
 
         // PoR data
-        int unclaimed; // ref count for bestTx keys
-        mapping(bytes32 => Transaction) bestTx; // keccak(brand.memo) => best tx
+        int minable; // ref count for winner keys
+        mapping(bytes32 => Transaction) winner; // keccak(brand.memo) => winning tx
     }
 
     struct Transaction {
@@ -60,18 +60,18 @@ contract PoR {
     ) external {
         BlockHeader storage header = headers[_blockHash];
         require(header.merkleRoot != 0, "no such block");
-        Transaction storage bestTx = header.bestTx[_memoHash];
-        require(bestTx.id != 0, "no such tx");
+        Transaction storage winner = header.winner[_memoHash];
+        require(winner.id != 0, "no such tx");
         bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
-        require(bestTx.outpointTxLE == txId, "outpoint tx mismatch");
-        bytes memory output = _vout.extractOutputAtIndex(bestTx.outpointIndexLE.reverseEndianness().toUint32(0));
+        require(winner.outpointTxLE == txId, "outpoint tx mismatch");
+        bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         bytes20 pkh = extractPKH(output, _pkhIdx);
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
         // TODO: mint the token to miner
-        delete header.bestTx[_memoHash];
-        if (header.unclaimed > 1) {
-            header.unclaimed--;
+        delete header.winner[_memoHash];
+        if (header.minable > 1) {
+            header.minable--;
         } else {
             // TODO: save this gas-refund for commitBlock to:
             // 1. disincentivize miner to delay the claim request for gas-refund
@@ -129,18 +129,18 @@ contract PoR {
         bytes memory input = _vin.extractInputAtIndex(_inputIndex);
 
         bytes32 memoHash = keccak256(memo);
-        Transaction storage bestTx = header.bestTx[memoHash];
-        if (bestTx.id != 0) {
-            uint oldRank = txRank(_blockHash, bestTx.id);
+        Transaction storage winner = header.winner[memoHash];
+        if (winner.id != 0) {
+            uint oldRank = txRank(_blockHash, winner.id);
             uint newRank = txRank(_blockHash, txId);
             require(newRank < oldRank, "not better than commited tx");
         } else {
-            header.unclaimed++; // increase the ref count for new brand
+            header.minable++; // increase the ref count for new brand
         }
         // store the outpoint to claim the reward later
-        bestTx.outpointTxLE = input.extractInputTxIdLE();
-        bestTx.outpointIndexLE = input.extractTxIndexLE();
-        bestTx.id = txId;
+        winner.outpointTxLE = input.extractInputTxIdLE();
+        winner.outpointIndexLE = input.extractTxIndexLE();
+        winner.id = txId;
     }
 
     function commitBlock(
