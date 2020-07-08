@@ -294,6 +294,15 @@ library BytesLib {
         return tempUint;
     }
 
+    function toUint32(bytes memory _bytes, uint _start) internal  pure returns (uint32 ret) {
+        uint _totalLen = _start + 4;
+        require(_totalLen > _start && _bytes.length >= _totalLen, "Uint conversion out of bounds.");
+
+        assembly {
+            ret := mload(add(add(_bytes, 0x04), _start))
+        }
+    }
+
     function equal(bytes memory _preBytes, bytes memory _postBytes) internal pure returns (bool) {
         bool success = true;
 
@@ -409,6 +418,16 @@ library BytesLib {
 
         assembly {
             result := mload(add(_source, 32))
+        }
+    }
+
+    function toBytes20(bytes memory _source) pure internal returns (bytes20 result) {
+        if (_source.length == 0) {
+            return 0x0;
+        }
+
+        assembly {
+            result := mload(add(_source, 20))
         }
     }
 

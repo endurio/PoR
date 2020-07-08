@@ -7,18 +7,21 @@ import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
 
 contract PoR {
+    bytes constant ENDURIO = "endur.io";
+
     using BTCUtils for bytes;
     using BTCUtils for uint256;
     using BytesLib for bytes;
     // using SafeMath for uint256;
 
-    mapping(bytes20 => address) internal pkhs; // pubkey bytes32 => address
+    mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
     mapping(bytes32 => BlockHeader) internal headers;
-    mapping(bytes => Brand) internal brands;
+    mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
 
     struct Brand {
         address owner;
         uint reward;
+        bytes memo;
     }
 
     struct BlockHeader {
@@ -27,6 +30,7 @@ contract PoR {
         uint32  timestamp;
 
         // PoR data
+        int unclaimed; // ref count for bestTx keys
         mapping(bytes32 => Transaction) bestTx; // keccak(brand.memo) => best tx
     }
 
@@ -37,7 +41,106 @@ contract PoR {
     }
 
     constructor() internal {
+        brands[keccak256(ENDURIO)] = Brand({
+            owner: address(this),
+            reward: 1e18,
+            memo: ENDURIO
+        });
         return;
+    }
+
+    function mine(
+        bytes32 _blockHash,
+        bytes32 _memoHash,
+        bytes calldata _vin,    // outpoint tx input vector
+        bytes calldata _vout,   // outpoint tx output vector
+        uint64 _version,        // outpoint tx version
+        uint64 _locktime,       // outpoint tx locktime
+        uint64 _pkhIdx          // (optional) position of miner PKH in the outpoint raw data (including the first 8-bytes amount for optimization)
+    ) external {
+        BlockHeader storage header = headers[_blockHash];
+        require(header.merkleRoot != 0, "no such block");
+        Transaction storage bestTx = header.bestTx[_memoHash];
+        require(bestTx.id != 0, "no such tx");
+        bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
+        require(bestTx.outpointTxLE == txId, "outpoint tx mismatch");
+        bytes memory output = _vout.extractOutputAtIndex(bestTx.outpointIndexLE.reverseEndianness().toUint32(0));
+        bytes20 pkh = extractPKH(output, _pkhIdx);
+        address miner = miners[pkh];
+        require(miner != address(0x0), "unregistered PKH");
+        // TODO: mint the token to miner
+        delete header.bestTx[_memoHash];
+        if (header.unclaimed > 1) {
+            header.unclaimed--;
+        } else {
+            // TODO: save this gas-refund for commitBlock to:
+            // 1. disincentivize miner to delay the claim request for gas-refund
+            // 2. incentivize commitBlock relayer
+            delete headers[_blockHash];
+        }
+    }
+
+    function extractPKH(
+        bytes memory _output,
+        uint64 _pkhIdx
+    ) internal returns (bytes20) {
+        // the first 8 bytes is ussually for amount, so zero index makes no sense here
+        if (_pkhIdx > 0) {
+            // pkh location is provided for saving gas
+            return _output.slice(_pkhIdx, 20).toBytes20();
+        }
+        // standard outpoint types: p2pkh, p2wpkh
+        bytes memory pkh = _output.extractHash();
+        require(pkh.length == 20, "unsupported PKH in outpoint");
+        return pkh.toBytes20();
+    }
+
+    /// @param _merkleProof     The proof's intermediate nodes (digests between leaf and root)
+    /// @param _merkleIndex     The leaf's index in the tree (0-indexed)
+    function commitTx(
+        bytes32 _blockHash,
+        bytes calldata _merkleProof,
+        uint _merkleIndex,
+        bytes calldata _vin,    // tx input vector
+        bytes calldata _vout,   // tx output vector
+        uint64 _version,        // tx version
+        uint64 _locktime,       // tx locktime
+        uint _inputIndex,
+        uint _outputIndex
+        // TODO: pack the 5 params in an uint256
+    ) external {
+        BlockHeader storage header = headers[_blockHash];
+        bytes32 merkleRoot = header.merkleRoot;
+        require(merkleRoot != 0, "no such block");
+        // TODO: verify outdated timestamp
+
+        bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
+        require(ValidateSPV.prove(txId, merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
+
+        // extract the brand from OP_RETURN
+        bytes memory output = _vout.extractOutputAtIndex(_outputIndex);
+        bytes memory memo = output.extractOpReturnData();
+        require(memo.length > 0, "empty tx memo");
+
+        // Brand memory brand = brands[tx.memo];
+        // require(brand.owner != 0, "no such branch memo");
+        // TODO: handle manual miner address in tx memo
+
+        bytes memory input = _vin.extractInputAtIndex(_inputIndex);
+
+        bytes32 memoHash = keccak256(memo);
+        Transaction storage bestTx = header.bestTx[memoHash];
+        if (bestTx.id != 0) {
+            uint oldRank = txRank(_blockHash, bestTx.id);
+            uint newRank = txRank(_blockHash, txId);
+            require(newRank < oldRank, "not better than commited tx");
+        } else {
+            header.unclaimed++; // increase the ref count for new brand
+        }
+        // store the outpoint to claim the reward later
+        bestTx.outpointTxLE = input.extractInputTxIdLE();
+        bestTx.outpointIndexLE = input.extractTxIndexLE();
+        bestTx.id = txId;
     }
 
     function commitBlock(
@@ -71,59 +174,15 @@ contract PoR {
         return uint(keccak256(abi.encodePacked(blockHash, txHash)));
     }
 
-    /// @param _intermediateNodes   The proof's intermediate nodes (digests between leaf and root)
-    /// @param _index               The leaf's index in the tree (0-indexed)
-    function commitTx(
-        bytes32 _blockHash,
-        bytes calldata _intermediateNodes,
-        uint _index,
-        bytes calldata _vin,    // tx input vector
-        bytes calldata _vout,   // tx output vector
-        uint64 _version,        // tx version
-        uint64 _locktime,       // tx locktime
-        uint _outputIndex,
-        uint _inputIndex
-        // TODO: pack the 5 params in an uint256
-    ) external {
-        BlockHeader storage header = headers[_blockHash];
-        bytes32 merkleRoot = header.merkleRoot;
-        require(merkleRoot != 0, "no such block");
-        // TODO: verify outdated timestamp
-
-        bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
-        require(ValidateSPV.prove(txId, merkleRoot, _intermediateNodes, _index), "invalid merkle proof");
-
-        // extract the brand from OP_RETURN
-        bytes memory output = _vout.extractOutputAtIndex(_outputIndex);
-        bytes memory memo = output.extractOpReturnData();
-        require(memo.length > 0, "empty tx memo");
-
-        // Brand memory brand = brands[tx.memo];
-        // require(brand.owner != 0, "no such branch memo");
-        // TODO: handle manual agent address in tx memo
-
-        bytes memory input = _vin.extractInputAtIndex(_inputIndex);
-
-        bytes32 memoHash = keccak256(memo);
-        Transaction storage _tx = header.bestTx[memoHash];
-        if (_tx.id != 0) {
-            uint oldRank = txRank(_blockHash, _tx.id);
-            uint newRank = txRank(_blockHash, txId);
-            require(newRank < oldRank, "not better than commited tx");
-        }
-        // store the outpoint to claim the reward later
-        _tx.outpointTxLE = input.extractInputTxIdLE();
-        _tx.outpointIndexLE = input.extractTxIndexLE();
-        _tx.id = txId;
-    }
-
     function registerPKH(
         bytes memory _pubkey
     ) internal {
         address adr = CheckBitcoinSigs.accountFromPubkey(_pubkey);
         bytes20 pkh = getPKH(_pubkey);
-        pkhs[pkh] = adr; // store the mapping for re-use
+        miners[pkh] = adr; // store the mapping for re-use
     }
+
+    // TODO: changePKH, or something to clear out the unused PKH
 
     function getPKH(
         bytes memory _pubkey
