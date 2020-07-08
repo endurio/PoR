@@ -41,7 +41,7 @@ contract PoR {
         bytes outpointIndexLE; // 4 bytes LE integer
     }
 
-    constructor() internal {
+    constructor() public {
         brands[keccak256(ENDURIO)] = Brand({
             owner: address(this),
             reward: 1e18,
@@ -61,17 +61,21 @@ contract PoR {
                                 // (including the first 8-bytes amount for optimization)
     ) external {
         BlockHeader storage header = headers[_blockHash];
+        { // stack too deep
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
         // solium-disable-next-line security/no-block-members
         require(timestamp <= block.timestamp - COMMIT_TIMEOUT, "block too new");
+        }
 
         Transaction storage winner = header.winner[_memoHash];
         require(winner.id != 0, "no such tx");
 
+        { // stack too deep
         bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
         // TODO: endianness
         require(winner.outpointTxLE == txId, "outpoint tx mismatch");
+        }
 
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         bytes20 pkh = extractPKH(output, _pkhIdx);
@@ -112,37 +116,45 @@ contract PoR {
     function commitTx(
         bytes32 _blockHash,
         bytes calldata _merkleProof,
-        uint _merkleIndex,      // TODO: pack this
+        uint _merkleIndex,
+        uint _extra,
+            // uint32 _inputIndex     // index of input which its outpoint locking script contains the miner PKH
+            // uint32 _outputIndex,
+            // uint32 _locktime,      // tx locktime
+            // uint32 _version,       // tx version
         bytes calldata _vin,    // tx input vector
-        bytes calldata _vout,   // tx output vector
-        uint32 _version,        // tx version
-        uint32 _locktime,       // tx locktime
-        uint32 _outputIndex,
-        uint32 _inputIndex     // index of input which its outpoint locking script contains the miner PKH
-        // TODO: pack the 5 params in an uint256
+        bytes calldata _vout   // tx output vector
     ) external {
         BlockHeader storage header = headers[_blockHash];
 
+        { // stack too deep
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
         // solium-disable-next-line security/no-block-members
         require(block.timestamp - COMMIT_TIMEOUT < timestamp, "block too old");
+        }
 
-        bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
+        bytes32 txId;
+        { // stack too deep
+        uint32 _version = uint32(_extra & 0xFFFFFFFF);
+        uint32 _locktime = uint32((_extra & 0xFFFFFFFF00000000) >> 32);
+        txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
         require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
+        }
 
         // extract the brand from OP_RETURN
-        bytes memory output = _vout.extractOutputAtIndex(_outputIndex);
-        bytes memory memo = output.extractOpReturnData();
+        bytes32 memoHash;
+        { // stack too deep
+        uint32 _outputIndex = uint32((_extra & 0xFFFFFFFF0000000000000000) >> 64);
+        bytes memory memo = _vout.extractOutputAtIndex(_outputIndex).extractOpReturnData();
         require(memo.length > 0, "empty tx memo");
+        memoHash = keccak256(memo);
+        }
 
         // Brand memory brand = brands[tx.memo];
         // require(brand.owner != 0, "no such branch memo");
         // TODO: handle manual miner address in tx memo
 
-        bytes memory input = _vin.extractInputAtIndex(_inputIndex);
-
-        bytes32 memoHash = keccak256(memo);
         Transaction storage winner = header.winner[memoHash];
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
@@ -151,7 +163,10 @@ contract PoR {
         } else {
             header.minable++; // increase the ref count for new brand
         }
+
         // store the outpoint to claim the reward later
+        uint32 _inputIndex = uint32((_extra & 0xFFFFFFFF000000000000000000000000) >> 96);
+        bytes memory input = _vin.extractInputAtIndex(_inputIndex);
         winner.outpointTxLE = input.extractInputTxIdLE();
         winner.outpointIndexLE = input.extractTxIndexLE();
         winner.id = txId;
