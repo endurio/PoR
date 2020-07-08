@@ -42,10 +42,10 @@ contract ValidateSPVTest {
     /// @ param _locktime   4-byte tx locktime
     /// @return             32-byte transaction id, little endian
     function calculateTxId(
-        uint64 _version,
+        uint32 _version,
         bytes memory _vin,
         bytes memory _vout,
-        uint64 _locktime
+        uint32 _locktime
     ) public pure returns (bytes32) {
         return ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
     }

@@ -54,9 +54,10 @@ contract PoR {
         bytes32 _memoHash,
         bytes calldata _vin,    // outpoint tx input vector
         bytes calldata _vout,   // outpoint tx output vector
-        uint64 _version,        // outpoint tx version
-        uint64 _locktime,       // outpoint tx locktime
-        uint64 _pkhIdx          // (optional) position of miner PKH in the outpoint raw data (including the first 8-bytes amount for optimization)
+        uint32 _version,        // outpoint tx version
+        uint32 _locktime,       // outpoint tx locktime
+        uint64 _pkhIdx          // (optional) position of miner PKH in the outpoint raw data
+                                // (including the first 8-bytes amount for optimization)
     ) external {
         BlockHeader storage header = headers[_blockHash];
         require(header.merkleRoot != 0, "no such block");
@@ -103,10 +104,10 @@ contract PoR {
         uint _merkleIndex,
         bytes calldata _vin,    // tx input vector
         bytes calldata _vout,   // tx output vector
-        uint64 _version,        // tx version
-        uint64 _locktime,       // tx locktime
-        uint _inputIndex,
-        uint _outputIndex
+        uint32 _version,        // tx version
+        uint32 _locktime,       // tx locktime
+        uint32 _outputIndex,
+        uint32 _inputIndex     // index of input which its outpoint locking script contains the miner PKH
         // TODO: pack the 5 params in an uint256
     ) external {
         BlockHeader storage header = headers[_blockHash];
