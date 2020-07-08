@@ -27,14 +27,13 @@ contract PoR {
         uint32  timestamp;
 
         // PoR data
-        mapping(bytes => Transaction) bestTx; // brand.memo => best tx
+        mapping(bytes32 => Transaction) bestTx; // keccak(brand.memo) => best tx
     }
 
     struct Transaction {
         bytes32 id;
         bytes32 outpointTxLE;
         bytes outpointIndexLE; // 4 bytes LE integer
-        bytes memo;
     }
 
     constructor() internal {
@@ -105,7 +104,8 @@ contract PoR {
 
         bytes memory input = _vin.extractInputAtIndex(_inputIndex);
 
-        Transaction storage _tx = header.bestTx[memo];
+        bytes32 memoHash = keccak256(memo);
+        Transaction storage _tx = header.bestTx[memoHash];
         if (_tx.id != 0) {
             uint oldRank = txRank(_blockHash, _tx.id);
             uint newRank = txRank(_blockHash, txId);
