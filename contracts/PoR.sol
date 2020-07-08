@@ -8,6 +8,7 @@ import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
 
 contract PoR {
     bytes constant ENDURIO = "endur.io";
+    uint constant COMMIT_TIMEOUT = 10 minutes;
 
     using BTCUtils for bytes;
     using BTCUtils for uint256;
@@ -60,7 +61,11 @@ contract PoR {
                                 // (including the first 8-bytes amount for optimization)
     ) external {
         BlockHeader storage header = headers[_blockHash];
-        require(header.merkleRoot != 0, "no such block");
+        uint32 timestamp = header.timestamp;
+        require(timestamp != 0, "no such block");
+        // solium-disable-next-line security/no-block-members
+        require(timestamp <= block.timestamp - COMMIT_TIMEOUT, "block too new");
+
         Transaction storage winner = header.winner[_memoHash];
         require(winner.id != 0, "no such tx");
 
@@ -117,12 +122,14 @@ contract PoR {
         // TODO: pack the 5 params in an uint256
     ) external {
         BlockHeader storage header = headers[_blockHash];
-        bytes32 merkleRoot = header.merkleRoot;
-        require(merkleRoot != 0, "no such block");
-        // TODO: verify outdated timestamp
+
+        uint32 timestamp = header.timestamp;
+        require(timestamp != 0, "no such block");
+        // solium-disable-next-line security/no-block-members
+        require(block.timestamp - COMMIT_TIMEOUT < timestamp, "block too old");
 
         bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
-        require(ValidateSPV.prove(txId, merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
+        require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
 
         // extract the brand from OP_RETURN
         bytes memory output = _vout.extractOutputAtIndex(_outputIndex);
