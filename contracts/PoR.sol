@@ -5,10 +5,13 @@ import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
+import {util} from "./lib/util.sol";
 
 contract PoR {
     bytes constant ENDURIO = "endur.io";
     uint constant COMMIT_TIMEOUT = 10 minutes;
+
+    uint constant MAX_TARGET = 0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
     using BTCUtils for bytes;
     using BTCUtils for uint256;
@@ -21,7 +24,7 @@ contract PoR {
 
     struct Brand {
         address owner;
-        uint reward;
+        uint rate;    // 18 decimals
         bytes memo;
     }
 
@@ -44,7 +47,7 @@ contract PoR {
     constructor() public {
         brands[keccak256(ENDURIO)] = Brand({
             owner: address(this),
-            reward: 1e18,
+            rate: 1e18,
             memo: ENDURIO
         });
         return;
@@ -77,13 +80,21 @@ contract PoR {
         require(winner.outpointTxLE == txId, "outpoint tx mismatch");
         }
 
+        { // stack too deep
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         bytes20 pkh = extractPKH(output, _pkhIdx);
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
+        }
 
+        uint reward = MAX_TARGET / header.target;
+        { // stack too deep
+        Brand storage brand = brands[_memoHash];
+        uint rate = brand.rate;
+        require(rate > 0, "no such brand");
+        reward = util.mulCap(reward, rate) / 1e18;
+        }
         // TODO: mint the token to miner
-        // reward = brand.reward * header.target / RATE
 
         delete header.winner[_memoHash];
 
@@ -99,7 +110,7 @@ contract PoR {
     function extractPKH(
         bytes memory _output,
         uint64 _pkhIdx
-    ) internal returns (bytes20) {
+    ) internal pure returns (bytes20) {
         // the first 8 bytes is ussually for amount, so zero index makes no sense here
         if (_pkhIdx > 0) {
             // pkh location is provided for saving gas
