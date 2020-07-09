@@ -223,15 +223,26 @@ contract PoR {
         return uint(keccak256(abi.encodePacked(blockHash, txHash)));
     }
 
-    function registerPKH(
-        bytes memory _pubkey
-    ) internal {
+    function registerMiner(
+        bytes calldata _pubkey,
+        address _beneficient    // (optional) rewarding address
+    ) external {
         address adr = CheckBitcoinSigs.accountFromPubkey(_pubkey);
+        if (_beneficient != address(0x0)) {
+            require(msg.sender == adr, "only pkh owner can change the beneficient address");
+            adr = _beneficient;
+        }
         bytes20 pkh = getPKH(_pubkey);
-        miners[pkh] = adr; // store the mapping for re-use
+        miners[pkh] = adr;
     }
 
-    // TODO: changePKH, or something to clear out the unused PKH
+    function changeMiner(
+        bytes20 _pkh,
+        address _beneficient
+    ) external {
+        require(msg.sender == miners[_pkh], "only for old owner");
+        miners[_pkh] = _beneficient;
+    }
 
     function getPKH(
         bytes memory _pubkey
