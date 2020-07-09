@@ -84,15 +84,15 @@ contract PoR {
 
         // TODO: mint the token to miner
         // reward = brand.reward * header.target / RATE
+
         delete header.winner[_memoHash];
 
         if (header.minable > 1) {
             header.minable--;
         } else {
-            // TODO: save this gas-refund for commitBlock to:
-            // 1. disincentivize miner to delay the claim request for gas-refund
-            // 2. incentivize commitBlock relayer
             delete headers[_blockHash];
+
+            // TODO: clean up and rate adjustment here
         }
     }
 
@@ -188,31 +188,25 @@ contract PoR {
         return uint32((packed >> shift) & 0xFFFFFFFF);
     }
 
+    /// TODO: create an incentive for only 1 miner to commit the block
     function commitBlock(
-        bytes calldata _header,
-        bytes32 _outdatedBlockHash   // optional outdated block to clean up for gas re-fund
+        bytes calldata _header
     ) external {
+        BlockHeader storage header = headers[_blockHash];
+        require(header.merkleRoot == 0, "block committed");
+
         // header can be of any size
         uint target = _header.extractTarget();
 
         // Require that the header has sufficient work
         bytes32 _blockHash = _header.hash256View();
-        require(uint(_blockHash).reverseUint256() <= target, "insufficient work for block");
+        require(uint(_blockHash).reverseUint256() <= target, "insufficient work");
 
         // TODO: verify block timestamp > genesis timestamp
-
-        BlockHeader storage header = headers[_blockHash];
-        require(header.merkleRoot == 0, "block committed");
 
         header.merkleRoot = _header.extractMerkleRootLE().toBytes32();
         header.timestamp = _header.extractTimestamp();
         header.target = target;
-
-        // TODO: implement this
-        // cleaning up for gas re-fund
-        // if (_outdatedBlock != 0) {
-        //     BlockHeader memory outdatedHeader = headers[_outdatedBlockHash];
-        // }
     }
 
     function txRank(bytes32 blockHash, bytes32 txHash) internal pure returns (uint) {
