@@ -192,14 +192,13 @@ contract PoR {
     function commitBlock(
         bytes calldata _header
     ) external {
+        bytes32 _blockHash = _header.hash256View();
         BlockHeader storage header = headers[_blockHash];
         require(header.merkleRoot == 0, "block committed");
 
         // header can be of any size
         uint target = _header.extractTarget();
-
         // Require that the header has sufficient work
-        bytes32 _blockHash = _header.hash256View();
         require(uint(_blockHash).reverseUint256() <= target, "insufficient work");
 
         // TODO: verify block timestamp > genesis timestamp
