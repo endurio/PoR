@@ -111,6 +111,13 @@ contract PoR {
         return pkh.toBytes20();
     }
 
+    uint constant EXTRA_VERSION = 0;
+    uint constant EXTRA_LOCKTIME = 32;
+    uint constant EXTRA_OUTPUT_IDX = 32*2;
+    uint constant EXTRA_INPUT_IDX = 32*3;
+    uint constant EXTRA_MEMO_LENGTH = 32*4;
+    // uint constant EXTRA_MINER_POS = 32*5;
+
     /// @param _merkleProof     The proof's intermediate nodes (digests between leaf and root)
     /// @param _merkleIndex     The leaf's index in the tree (0-indexed)
     function commitTx(
@@ -118,6 +125,7 @@ contract PoR {
         bytes calldata _merkleProof,
         uint _merkleIndex,
         uint _extra,
+            // uint32 _memoLength
             // uint32 _inputIndex     // index of input which its outpoint locking script contains the miner PKH
             // uint32 _outputIndex,
             // uint32 _locktime,      // tx locktime
@@ -134,28 +142,23 @@ contract PoR {
         require(block.timestamp - COMMIT_TIMEOUT < timestamp, "block too old");
         }
 
-        bytes32 txId;
-        { // stack too deep
-        uint32 _version = uint32(_extra & 0xFFFFFFFF);
-        uint32 _locktime = uint32((_extra & 0xFFFFFFFF00000000) >> 32);
-        txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
+        bytes32 txId = ValidateSPV.calculateTxId(
+            extractUint32(_extra, EXTRA_VERSION),
+            _vin,
+            _vout,
+            extractUint32(_extra, EXTRA_LOCKTIME));
         require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
-        }
-
-        // extract the brand from OP_RETURN
-        bytes32 memoHash;
-        { // stack too deep
-        uint32 _outputIndex = uint32((_extra & 0xFFFFFFFF0000000000000000) >> 64);
-        bytes memory memo = _vout.extractOutputAtIndex(_outputIndex).extractOpReturnData();
-        require(memo.length > 0, "empty tx memo");
-        memoHash = keccak256(memo);
-        }
 
         // Brand memory brand = brands[tx.memo];
         // require(brand.owner != 0, "no such branch memo");
         // TODO: handle manual miner address in tx memo
 
-        Transaction storage winner = header.winner[memoHash];
+        // extract the brand from OP_RETURN
+        Transaction storage winner = getWinner(
+            header,
+            _vout.extractOutputAtIndex(extractUint32(_extra, EXTRA_OUTPUT_IDX)).extractOpReturnData()
+        );
+
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
             uint newRank = txRank(_blockHash, txId);
@@ -165,11 +168,20 @@ contract PoR {
         }
 
         // store the outpoint to claim the reward later
-        uint32 _inputIndex = uint32((_extra & 0xFFFFFFFF000000000000000000000000) >> 96);
-        bytes memory input = _vin.extractInputAtIndex(_inputIndex);
+        bytes memory input = _vin.extractInputAtIndex(extractUint32(_extra, EXTRA_INPUT_IDX));
         winner.outpointTxLE = input.extractInputTxIdLE();
         winner.outpointIndexLE = input.extractTxIndexLE();
         winner.id = txId;
+    }
+
+    function getWinner(BlockHeader storage header, bytes memory memo) internal view returns (Transaction storage) {
+        require(memo.length > 0, "empty tx memo");
+        bytes32 memoHash = keccak256(memo);
+        return header.winner[memoHash];
+    }
+
+    function extractUint32(uint packed, uint shift) internal pure returns (uint32) {
+        return uint32((packed >> shift) & 0xFFFFFFFF);
     }
 
     function commitBlock(
