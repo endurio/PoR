@@ -149,15 +149,13 @@ contract PoR {
             extractUint32(_extra, EXTRA_LOCKTIME));
         require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
 
-        // Brand memory brand = brands[tx.memo];
-        // require(brand.owner != 0, "no such branch memo");
-        // TODO: handle manual miner address in tx memo
-
         // extract the brand from OP_RETURN
         Transaction storage winner = getWinner(
             header,
-            _vout.extractOutputAtIndex(extractUint32(_extra, EXTRA_OUTPUT_IDX)).extractOpReturnData()
+            _vout.extractOutputAtIndex(extractUint32(_extra, EXTRA_OUTPUT_IDX)).extractOpReturnData(),
+            extractUint32(_extra, EXTRA_MEMO_LENGTH)
         );
+        // TODO: handle manual miner address in tx memo
 
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
@@ -174,8 +172,14 @@ contract PoR {
         winner.id = txId;
     }
 
-    function getWinner(BlockHeader storage header, bytes memory memo) internal view returns (Transaction storage) {
-        require(memo.length > 0, "empty tx memo");
+    function getWinner(
+        BlockHeader storage header,
+        bytes memory opret,
+        uint memoLength
+    ) internal view returns (Transaction storage) {
+        require(opret.length > memoLength, "no memo in tx opret");
+        bytes memory memo = memoLength > 0 ? opret.slice(0, memoLength) : opret;
+        // unregistered brand allowed here
         bytes32 memoHash = keccak256(memo);
         return header.winner[memoHash];
     }
