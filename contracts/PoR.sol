@@ -19,7 +19,7 @@ contract PoR {
     // using SafeMath for uint256;
 
     mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
-    mapping(bytes32 => BlockHeader) internal headers;
+    mapping(bytes32 => Header) internal headers;
     mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
 
     struct Brand {
@@ -28,7 +28,7 @@ contract PoR {
         bytes memo;
     }
 
-    struct BlockHeader {
+    struct Header {
         bytes32 merkleRoot;
         uint target;
         uint32  timestamp;
@@ -63,7 +63,7 @@ contract PoR {
         uint64 _pkhIdx          // (optional) position of miner PKH in the outpoint raw data
                                 // (including the first 8-bytes amount for optimization)
     ) external {
-        BlockHeader storage header = headers[_blockHash];
+        Header storage header = headers[_blockHash];
         { // stack too deep
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
@@ -144,7 +144,7 @@ contract PoR {
         bytes calldata _vin,    // tx input vector
         bytes calldata _vout   // tx output vector
     ) external {
-        BlockHeader storage header = headers[_blockHash];
+        Header storage header = headers[_blockHash];
 
         { // stack too deep
         uint32 timestamp = header.timestamp;
@@ -184,7 +184,7 @@ contract PoR {
     }
 
     function getWinner(
-        BlockHeader storage header,
+        Header storage header,
         bytes memory opret,
         uint memoLength
     ) internal view returns (Transaction storage) {
@@ -204,7 +204,7 @@ contract PoR {
         bytes calldata _header
     ) external {
         bytes32 _blockHash = _header.hash256View();
-        BlockHeader storage header = headers[_blockHash];
+        Header storage header = headers[_blockHash];
         require(header.merkleRoot == 0, "block committed");
 
         // header can be of any size
