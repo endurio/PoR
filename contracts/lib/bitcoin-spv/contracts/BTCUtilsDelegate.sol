@@ -1,4 +1,4 @@
-pragma solidity ^0.5.10;
+pragma solidity ^0.6.2;
 
 /** @title BitcoinSPV */
 /** @author Summa (https://summa.one) */
@@ -72,9 +72,9 @@ library BTCUtilsDelegate {
     /// @dev             sha2 is precompiled smart contract located at address(2)
     /// @param _b        The pre-image
     /// @return          The digest
-    function hash256View(bytes memory _b) internal view returns (bytes32) {
-        return BTCUtils.hash256View(_b);
-    }
+    // function hash256View(bytes memory _b) internal view returns (bytes32) {
+    //     return BTCUtils.hash256View(_b);
+    // }
 
     /* ************ */
     /* Legacy Input */

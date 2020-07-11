@@ -1,4 +1,4 @@
-pragma solidity ^0.5.10;
+pragma solidity ^0.6.2;
 
 /** @title ValidateSPV*/
 /** @author Summa (https://summa.one) */
@@ -55,9 +55,9 @@ library ValidateSPVDelegate {
     /// @notice             Compares the hash of each header to the prevHash in the next header
     /// @param _headers     Raw byte array of header chain
     /// @return             The total accumulated difficulty of the header chain
-    function validateHeaderChain(bytes memory _headers) public view returns (uint256 _reqDiff) {
-        return ValidateSPV.validateHeaderChain(_headers);
-    }
+    // function validateHeaderChain(bytes memory _headers) public view returns (uint256 _reqDiff) {
+    //     return ValidateSPV.validateHeaderChain(_headers);
+    // }
 
     /// @notice             Checks validity of header work
     /// @param _digest      Header digest

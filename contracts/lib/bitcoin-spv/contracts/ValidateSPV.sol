@@ -1,4 +1,4 @@
-pragma solidity ^0.5.10;
+pragma solidity ^0.6.2;
 
 /** @title ValidateSPV*/
 /** @author Summa (https://summa.one) */
@@ -78,39 +78,39 @@ library ValidateSPV {
     /// @notice             Compares the hash of each header to the prevHash in the next header
     /// @param _headers     Raw byte array of header chain
     /// @return             The total accumulated difficulty of the header chain, or an error code
-    function validateHeaderChain(bytes memory _headers) internal view returns (uint256 _totalDifficulty) {
+    // function validateHeaderChain(bytes memory _headers) internal view returns (uint256 _totalDifficulty) {
 
-        // Check header chain length
-        if (_headers.length % 80 != 0) {return ERR_BAD_LENGTH;}
+    //     // Check header chain length
+    //     if (_headers.length % 80 != 0) {return ERR_BAD_LENGTH;}
 
-        // Initialize header start index
-        bytes32 _digest;
+    //     // Initialize header start index
+    //     bytes32 _digest;
 
-        _totalDifficulty = 0;
+    //     _totalDifficulty = 0;
 
-        for (uint256 _start = 0; _start < _headers.length; _start += 80) {
+    //     for (uint256 _start = 0; _start < _headers.length; _start += 80) {
 
-            // ith header start index and ith header
-            bytes memory _header = _headers.slice(_start, 80);
+    //         // ith header start index and ith header
+    //         bytes memory _header = _headers.slice(_start, 80);
 
-            // After the first header, check that headers are in a chain
-            if (_start != 0) {
-                if (!validateHeaderPrevHash(_header, _digest)) {return ERR_INVALID_CHAIN;}
-            }
+    //         // After the first header, check that headers are in a chain
+    //         if (_start != 0) {
+    //             if (!validateHeaderPrevHash(_header, _digest)) {return ERR_INVALID_CHAIN;}
+    //         }
 
-            // ith header target
-            uint256 _target = _header.extractTarget();
+    //         // ith header target
+    //         uint256 _target = _header.extractTarget();
 
-            // Require that the header has sufficient work
-            _digest = _header.hash256View();
-            if(uint256(_digest).reverseUint256() > _target) {
-                return ERR_LOW_WORK;
-            }
+    //         // Require that the header has sufficient work
+    //         _digest = _header.hash256View();
+    //         if(uint256(_digest).reverseUint256() > _target) {
+    //             return ERR_LOW_WORK;
+    //         }
 
-            // Add ith header difficulty to difficulty sum
-            _totalDifficulty = _totalDifficulty.add(_target.calculateDifficulty());
-        }
-    }
+    //         // Add ith header difficulty to difficulty sum
+    //         _totalDifficulty = _totalDifficulty.add(_target.calculateDifficulty());
+    //     }
+    // }
 
     /// @notice             Checks validity of header work
     /// @param _digest      Header digest
