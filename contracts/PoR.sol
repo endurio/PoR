@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: MIT
-pragma solidity >=0.5.10;
+pragma solidity >=0.6.2;
 
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
 import {util} from "./lib/util.sol";
+import {BrandMarket} from "./BrandMarket.sol";
 
-contract PoR {
-    bytes constant ENDURIO = "endur.io";
+/**
+ * Proof of Reference
+ */
+contract PoR is BrandMarket {
     uint constant COMMIT_TIMEOUT = 10 minutes;
 
     uint constant MAX_TARGET = 0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
@@ -20,13 +23,6 @@ contract PoR {
 
     mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
     mapping(bytes32 => Header) internal headers;
-    mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
-
-    struct Brand {
-        address owner;
-        uint rate;    // 18 decimals
-        bytes memo;
-    }
 
     struct Header {
         bytes32 merkleRoot;
@@ -44,13 +40,7 @@ contract PoR {
         bytes outpointIndexLE; // 4 bytes LE integer
     }
 
-    constructor() public {
-        brands[keccak256(ENDURIO)] = Brand({
-            owner: address(this),
-            rate: 1e18,
-            memo: ENDURIO
-        });
-        return;
+    constructor() public BrandMarket() {
     }
 
     function mine(
@@ -203,7 +193,7 @@ contract PoR {
     function commitBlock(
         bytes calldata _header
     ) external {
-        bytes32 _blockHash = _header.hash256View();
+        bytes32 _blockHash = _header.hash256();
         Header storage header = headers[_blockHash];
         require(header.merkleRoot == 0, "block committed");
 
