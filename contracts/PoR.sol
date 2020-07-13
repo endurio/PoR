@@ -72,19 +72,12 @@ contract PoR is BrandMarket {
 
         { // stack too deep
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
-        bytes20 pkh = extractPKH(output, _pkhIdx);
-        address miner = miners[pkh];
+        address miner = miners[extractPKH(output, _pkhIdx)];
         require(miner != address(0x0), "unregistered PKH");
-        }
-
-        uint reward = MAX_TARGET / header.target;
-        { // stack too deep
+        uint rewardRate = MAX_TARGET / header.target;
         Brand storage brand = brands[_memoHash];
-        uint rate = brand.rate;
-        require(rate > 0, "no such brand");
-        reward = util.mulCap(reward, rate) / 1e18;
+        _pay(brand, miner, rewardRate);
         }
-        // TODO: mint the token to miner
 
         delete header.winner[_memoHash];
 
