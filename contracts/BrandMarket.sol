@@ -6,25 +6,43 @@ pragma solidity >=0.6.2;
 import {util} from "./lib/util.sol";
 import {sval} from "./lib/sval.sol";
 import {RefNetwork} from "./RefNetwork.sol";
+import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 
 /**
  * Market for brands to bid for miner.
  */
 contract BrandMarket is RefNetwork {
     using sval for sval.SUint;
+    using BytesLib for bytes;
 
-    bytes constant ENDURIO_MEMO = "endur.io";
-    uint constant ENDURIO_PAYRATE = 1e18;
-    uint constant ACTIVE_CONDITION_PAYRATE = 4;
-    uint constant PAYRATE_DELAY = 40 minutes; // decreasing pay rate or deactivating requires a delay
+    bytes   constant ENDURIO_MEMO = "endur.io";
+    uint    constant ENDURIO_PAYRATE = 1e18;
+    uint    constant ACTIVE_CONDITION_PAYRATE = 4;
+    uint    constant PAYRATE_DELAY = 40 minutes; // decreasing pay rate or deactivating requires a delay
 
     mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
 
+    event Active(
+        bytes32 indexed memoHash,
+        bytes32         memo,       // the first 32 bytes of the memo
+        uint            payRate,
+        address indexed payer,
+        uint            balance
+    );
+    event Deactive(bytes32 indexed memoHash);
+    event Pay(
+        bytes32 indexed memoHash,
+        bytes32         memo,       // the first 32 bytes of the memo
+        address indexed payer,
+        address indexed payee,
+        uint            amount
+    );
+
     struct Brand {
-        bytes memo;
-        address payer;
-        uint balance;
-        sval.SUint payRate; // 18 decimals
+        bytes       memo;
+        address     payer;
+        uint        balance;
+        sval.SUint  payRate; // 18 decimals
     }
 
     constructor() public RefNetwork() {
@@ -38,9 +56,9 @@ contract BrandMarket is RefNetwork {
      * Register/take over, deposit and active a brand
      */
     function registerBrand(
-        bytes calldata memo,
-        uint payRate,           // zero to disable auto activation
-        uint amount             // initial deposit
+        bytes   calldata memo,
+        uint    payRate,           // zero to disable auto activation
+        uint    amount             // initial deposit
     ) external {
         require(amount >= payRate * ACTIVE_CONDITION_PAYRATE, "not enough deposit for given payrate");
         bytes32 memoHash = keccak256(memo);
@@ -59,23 +77,27 @@ contract BrandMarket is RefNetwork {
         brand.payer = msg.sender;
         brand.balance = amount;
         _setPayRate(brand, payRate);
+        emit Active(memoHash, memo.toBytes32(), payRate, msg.sender, amount);
     }
 
     /**
-     * active, cancel any on-going deactivation and set the payRate
+     * activate, cancel any on-going deactivation and set the payRate
      */
-    function active(bytes32 memoHash, uint payRate) external {
+    function activate(bytes32 memoHash, uint payRate) external {
         Brand storage brand = brands[memoHash];
-        require(msg.sender == brand.payer, "current payer only");
-        require(brand.balance >= payRate * ACTIVE_CONDITION_PAYRATE, "not enough deposit for given payrate");
+        address payer = brand.payer;
+        require(msg.sender == payer, "current payer only");
+        uint balance = brand.balance;
+        require(balance >= payRate * ACTIVE_CONDITION_PAYRATE, "not enough deposit for given payrate");
         _setPayRate(brand, payRate);
+        emit Active(memoHash, brand.memo.toBytes32(), payRate, payer, balance);
     }
 
     /**
-     * request to deactive the brand, with an optional delay param
+     * request to deactivate the brand, with an optional delay param
      * the actual delay time is max(delay, PAYRATE_DELAY = 40 mins)
      */
-    function deactive(bytes32 memoHash, uint delay) external {
+    function deactivate(bytes32 memoHash, uint delay) external {
         Brand storage brand = brands[memoHash];
         require(msg.sender == brand.payer, "current payer only");
         require(brand.payRate.scheduled() > 0, "already pending for deactivation");
@@ -86,6 +108,7 @@ contract BrandMarket is RefNetwork {
             require(block.timestamp + delay > block.timestamp, "delay too long"); // overflown
             brand.payRate.schedule(0, delay);
         }
+        emit Deactive(memoHash);
     }
 
     /**
@@ -134,9 +157,16 @@ contract BrandMarket is RefNetwork {
     /**
      * for PoR to pay for the miner
      */
-    function _pay(Brand storage brand, address payee, uint rewardRate) internal {
-        if (brand.payer == address(this)) { // endur.io
-            _mint(payee, rewardRate);       // mining reward
+    function _pay(
+        Brand storage brand,
+        address payee,
+        uint rewardRate,
+        bytes32 memoHash
+    ) internal {
+        address payer = brand.payer;
+        if (payer == address(this)) {   // endur.io
+            _mint(payee, rewardRate);   // mining reward
+            emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, rewardRate);
             return;
         }
         uint payRate = brand.payRate.commited();
@@ -147,16 +177,20 @@ contract BrandMarket is RefNetwork {
             balance -= amount; // safe
             brand.balance = balance;
             _transfer(address(this), payee, amount);
+            emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, amount);
             if (balance < payRate * ACTIVE_CONDITION_PAYRATE) {
                 // schedule the deactivation
                 brand.payRate.schedule(0, PAYRATE_DELAY);
+                emit Deactive(memoHash);
             }
         } else {
             // exhaust the balance
             brand.balance = 0;
             _transfer(address(this), payee, balance);
+            emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, balance);
             // forced commit a deactivation
             brand.payRate.commit(0);
+            emit Deactive(memoHash);
         }
     }
 }

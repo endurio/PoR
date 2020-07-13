@@ -74,9 +74,11 @@ contract PoR is BrandMarket {
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         address miner = miners[extractPKH(output, _pkhIdx)];
         require(miner != address(0x0), "unregistered PKH");
-        uint rewardRate = MAX_TARGET / header.target;
-        Brand storage brand = brands[_memoHash];
-        _pay(brand, miner, rewardRate);
+        _pay(
+            brands[_memoHash],
+            miner,
+            MAX_TARGET / header.target, // rewardRate
+            _memoHash);
         }
 
         delete header.winner[_memoHash];
