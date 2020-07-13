@@ -185,7 +185,7 @@ contract BrandMarket is RefNetwork {
             }
         } else {
             // exhaust the balance
-            brand.balance = 0;
+            delete brand.balance;
             _transfer(address(this), payee, balance);
             emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, balance);
             // forced commit a deactivation
