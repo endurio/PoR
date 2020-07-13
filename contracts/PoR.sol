@@ -16,6 +16,15 @@ contract PoR is BrandMarket {
 
     uint constant MAX_TARGET = 0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
+    // extra param bit posistion (from the right)
+    uint constant EXTRA_VERSION     = 0;
+    uint constant EXTRA_LOCKTIME    = 32;
+    uint constant EXTRA_PKH_IDX     = 32*2;
+    uint constant EXTRA_OUTPUT_IDX  = 32*2;
+    uint constant EXTRA_INPUT_IDX   = 32*3;
+    uint constant EXTRA_MEMO_LENGTH = 32*4;
+    // uint constant EXTRA_MINER_POS = 32*5;
+
     using BTCUtils for bytes;
     using BTCUtils for uint256;
     using BytesLib for bytes;
@@ -48,10 +57,11 @@ contract PoR is BrandMarket {
         bytes32 _memoHash,
         bytes calldata _vin,    // outpoint tx input vector
         bytes calldata _vout,   // outpoint tx output vector
-        uint32 _version,        // outpoint tx version
-        uint32 _locktime,       // outpoint tx locktime
-        uint64 _pkhIdx          // (optional) position of miner PKH in the outpoint raw data
-                                // (including the first 8-bytes amount for optimization)
+        uint _extra
+            // uint32 _pkhIdx,      // (optional) position of miner PKH in the outpoint raw data
+                                    // (including the first 8-bytes amount for optimization)
+            // uint32 _locktime,    // tx locktime
+            // uint32 _version,     // tx version
     ) external {
         Header storage header = headers[_blockHash];
         { // stack too deep
@@ -65,14 +75,18 @@ contract PoR is BrandMarket {
         require(winner.id != 0, "no such tx");
 
         { // stack too deep
-        bytes32 txId = ValidateSPV.calculateTxId(_version, _vin, _vout, _locktime);
+        bytes32 txId = ValidateSPV.calculateTxId(
+            extractUint32(_extra, EXTRA_VERSION),
+            _vin,
+            _vout,
+            extractUint32(_extra, EXTRA_LOCKTIME));
         // TODO: endianness
         require(winner.outpointTxLE == txId, "outpoint tx mismatch");
         }
 
         { // stack too deep
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
-        address miner = miners[extractPKH(output, _pkhIdx)];
+        address miner = miners[extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX))];
         require(miner != address(0x0), "unregistered PKH");
         _pay(
             brands[_memoHash],
@@ -94,7 +108,7 @@ contract PoR is BrandMarket {
 
     function extractPKH(
         bytes memory _output,
-        uint64 _pkhIdx
+        uint32 _pkhIdx
     ) internal pure returns (bytes20) {
         // the first 8 bytes is ussually for amount, so zero index makes no sense here
         if (_pkhIdx > 0) {
@@ -106,13 +120,6 @@ contract PoR is BrandMarket {
         require(pkh.length == 20, "unsupported PKH in outpoint");
         return pkh.toBytes20();
     }
-
-    uint constant EXTRA_VERSION = 0;
-    uint constant EXTRA_LOCKTIME = 32;
-    uint constant EXTRA_OUTPUT_IDX = 32*2;
-    uint constant EXTRA_INPUT_IDX = 32*3;
-    uint constant EXTRA_MEMO_LENGTH = 32*4;
-    // uint constant EXTRA_MINER_POS = 32*5;
 
     /// @param _merkleProof     The proof's intermediate nodes (digests between leaf and root)
     /// @param _merkleIndex     The leaf's index in the tree (0-indexed)
