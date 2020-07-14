@@ -3,8 +3,8 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
-import {util} from "./lib/util.sol";
-import {sval} from "./lib/sval.sol";
+import "./lib/util.sol";
+import "./lib/sval.sol";
 import {RefNetwork} from "./RefNetwork.sol";
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 
@@ -12,7 +12,7 @@ import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
  * Market for brands to bid for miner.
  */
 contract BrandMarket is RefNetwork {
-    using sval for sval.SUint;
+    using sval for SUint;
     using BytesLib for bytes;
 
     bytes   constant ENDURIO_MEMO = "endur.io";
@@ -39,10 +39,10 @@ contract BrandMarket is RefNetwork {
     );
 
     struct Brand {
-        bytes       memo;
-        address     payer;
-        uint        balance;
-        sval.SUint  payRate; // 18 decimals
+        bytes   memo;
+        address payer;
+        uint    balance;
+        SUint   payRate; // 18 decimals
     }
 
     constructor() public RefNetwork() {

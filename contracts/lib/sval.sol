@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.2;
-
 // solium-disable security/no-block-members
+
+struct SUint {
+    uint commitedValue;
+    uint scheduledValue;
+    uint scheduledTime;
+}
 
 /**
  * Scheduled Value - a value that can be scheduled to change after a delay.
+ *
+ * TODO: optimize for 28 bytes value.
  */
 library sval {
-    struct SUint {
-        uint commitedValue;
-        uint scheduledValue;
-        uint scheduledTime;
-    }
-
-    using sval for SUint;
 
     function commited(SUint storage sv) internal view returns (uint) {
         return sv.scheduledTime <= block.timestamp ? sv.scheduledValue : sv.commitedValue;
