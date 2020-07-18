@@ -17,8 +17,8 @@ contract BrandMarket is RefNetwork {
 
     bytes   constant ENDURIO_MEMO = "endur.io";
     uint    constant ENDURIO_PAYRATE = 1e18;
-    uint    constant ACTIVE_CONDITION_PAYRATE = 4;
-    uint    constant PAYRATE_DELAY = 40 minutes; // decreasing pay rate or deactivating requires a delay
+    uint    constant ACTIVE_CONDITION_PAYRATE = 4;  // 4 times payment
+    uint    constant PAYRATE_DELAY = 40 minutes;    // decreasing pay rate or deactivating requires a delay
 
     mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
 
@@ -157,17 +157,26 @@ contract BrandMarket is RefNetwork {
     /**
      * for PoR to pay for the miner
      */
-    function _pay(
-        Brand storage brand,
+    function pay(
+        bytes32 memoHash,
         address payee,
-        uint rewardRate,
-        bytes32 memoHash
+        uint rewardRate
     ) internal {
+        uint paid = takeReward(memoHash, rewardRate);
+        reward(payee, paid);    // reward the miner and upstream in the ref network
+        Brand storage brand = brands[memoHash];
+        emit Pay(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
+    }
+
+    /**
+     * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
+     */
+    function takeReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
+        Brand storage brand = brands[memoHash];
         address payer = brand.payer;
         if (payer == address(this)) {   // endur.io
-            _mint(payee, rewardRate);   // mining reward
-            emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, rewardRate);
-            return;
+            _mint(address(this), rewardRate);
+            return rewardRate;
         }
         uint payRate = brand.payRate.commited();
         require(payRate > 0, "brand not active");
@@ -176,21 +185,19 @@ contract BrandMarket is RefNetwork {
         if (amount < balance) {
             balance -= amount; // safe
             brand.balance = balance;
-            _transfer(address(this), payee, amount);
-            emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, amount);
             if (balance < payRate * ACTIVE_CONDITION_PAYRATE) {
                 // schedule the deactivation
                 brand.payRate.schedule(0, PAYRATE_DELAY);
                 emit Deactive(memoHash);
             }
+            return amount;
         } else {
             // exhaust the balance
             delete brand.balance;
-            _transfer(address(this), payee, balance);
-            emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, balance);
             // forced commit a deactivation
             brand.payRate.commit(0);
             emit Deactive(memoHash);
+            return balance;
         }
     }
 }

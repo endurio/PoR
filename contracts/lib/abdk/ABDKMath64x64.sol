@@ -24,6 +24,11 @@ library ABDKMath64x64 {
   int128 private constant MAX_64x64 = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
   /**
+   * Maximum value of uint256.
+   */
+  uint256 constant MAX_UINT256 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+
+  /**
    * Convert signed 256-bit integer number into signed 64.64-bit fixed point
    * number.  Revert on overflow.
    *
@@ -190,6 +195,30 @@ library ABDKMath64x64 {
 
     require (hi <=
       0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF - lo);
+    return hi + lo;
+  }
+
+  /**
+   * Capped version of mulu(int128,uint256).
+   *
+   * @return MAX_UINT256 on overflow.
+   */
+  function muluc (int128 x, uint256 y) internal pure returns (uint256) {
+    if (y == 0) return 0;
+
+    require (x >= 0);
+
+    uint256 lo = (uint256 (x) * (y & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)) >> 64;
+    uint256 hi = uint256 (x) * (y >> 128);
+
+    if (hi > 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF) {
+      return MAX_UINT256;
+    }
+    hi <<= 64;
+
+    if (hi > 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF - lo) {
+      return MAX_UINT256;
+    }
     return hi + lo;
   }
 

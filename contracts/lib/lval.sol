@@ -1,20 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.2;
+// solium-disable security/no-block-members
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 
-// solium-disable security/no-block-members
+struct LUint {
+    uint value;     // value in the lastTouch;
+    uint rate;      // leaking rate = value / sec
+    uint lastTouch; // last time the value is changed
+}
 
 /**
  * Leaking Value - a value that reducing over time with a constant rate.
  */
 library lval {
-    struct LUint {
-        uint value;     // value in the lastTouch;
-        uint rate;      // leaking rate = value / sec
-        uint lastTouch; // last time the value is changed
-    }
-
     /**
      * peek the current value without modify the storage
      */
@@ -37,6 +36,15 @@ library lval {
             return 0; // all value has been leaked for a while
         }
         return value - leaked;
+    }
+
+    /**
+     * @return leakingRate or zero if the balance is zero
+     *
+     * TODO: optimize this: check lv.rate == 0 first (?)
+     */
+    function getEffectiveLeakingRate(LUint storage lv) internal view returns (uint) {
+        return peek(lv) > 0 ? lv.rate : 0;
     }
 
     /**
@@ -64,5 +72,20 @@ library lval {
     function setLeakingRate(LUint storage lv, uint rate) internal {
         poll(lv);
         lv.rate = rate;
+    }
+
+    // raw value, disregard of leaking rate
+    function rawValue(LUint storage lv) internal view returns (uint) {
+        return lv.value;
+    }
+
+    // raw increment, disregard of leaking rate
+    function rawInc(LUint storage lv, uint value) internal {
+        lv.value = SafeMath.add(lv.value, value);
+    }
+
+    // raw decrement, disregard of leaking rate
+    function rawDec(LUint storage lv, uint value) internal {
+        lv.value = SafeMath.sub(lv.value, value, "LeakingValue: raw decrement overflow");
     }
 }
