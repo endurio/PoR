@@ -27,12 +27,18 @@ contract RefNetwork is ENDR {
 
     mapping(address => Node) nodes;
 
-    // system variables
-    uint S = 1;         // level step: commission half for every S of rent up the stream
-    // uint totalRent;     // total active rent of the network
+    // System Variables
+
+    /**
+     * @dev commission half for every globalLevelStep of rent up the stream.
+     * @dev globalLevelStep must never be zero.
+     */
+    uint globalLevelStep = 1;
+
+    // uint totalRent;          // total active rent of the network
     uint epochEnd;
-    uint epochTotalMined;   // track the total reward for this epoch;
-    uint epochTotalRootC;   // track the total commission for root node for this epoch;
+    uint epochTotalReward;      // track the total reward for this epoch;
+    uint epochTotalRootC;       // track the total commission for root node for this epoch;
 
     uint constant EPOCH = 1 weeks;
 
@@ -70,6 +76,7 @@ contract RefNetwork is ENDR {
         uint commission = amount >> 1;
         node.balance.inc(amount - commission); // safe
         commitToUpstream(node, commission);
+        epochTotalReward = util.addCap(epochTotalReward, amount);
     }
 
     /**
@@ -91,14 +98,21 @@ contract RefNetwork is ENDR {
         _commit(noder);
     }
 
+    /**
+     * @return parent address, or ROOT_PARENT if there no more node nor commission
+     */
     function _commit(address noder) internal returns (address) {
         Node storage node = nodes[noder];
         uint commission = node.commission;
         if (noder == ROOT_ADDRESS) {
             // root node alway take all the remain commission
             node.balance.rawInc(commission);
-            if (epochEnd <= block.timestamp) { // TODO: also check the accumulated cap here
-                adaptS(commission);
+            uint rootC = util.addCap(epochTotalRootC, commission);
+            // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
+            if (epochEnd <= block.timestamp) { 
+                adaptGlobalLevelStep(rootC);
+            } else {
+                epochTotalRootC = rootC;
             }
             return ROOT_PARENT;
         }
@@ -108,19 +122,19 @@ contract RefNetwork is ENDR {
             // TODO: check clean up condition here?
             return commitToUpstream(node, node.commission);
         }
-        // S is a global params, adjust so that root node get approximately 1/32 of the token minted.
+        // globalLevelStep is a global params, adjust so that root node get approximately 1/32 of the token minted.
         uint remain;
-        if (S <= 1) {
-            // use minimum value for S if it's zero
+        if (globalLevelStep <= 1) {
+            // use minimum value for globalLevelStep if it's zero
             remain = commission >> r;
         } else {
-            if (r / S > MAX_INT64) { // overflow 64x64
+            if (r / globalLevelStep > MAX_INT64) { // overflow 64x64
                 // take all the remain commission, leave nothing behind
                 node.balance.inc(commission);
                 return ROOT_PARENT; // no more commission to process
             }
-            int128 a = ABDKMath64x64.divu(r, S).neg().exp_2(); // a = 1/2^(r/S) = 2^(-r/S)
-            remain = a.mulu(commission);   // remain = commission / 2^(r/S)
+            int128 a = ABDKMath64x64.divu(r, globalLevelStep).neg().exp_2(); // a = 1/2^(r/globalLevelStep) = 2^(-r/globalLevelStep)
+            remain = a.mulu(commission);   // remain = commission / 2^(r/globalLevelStep)
         }
 
         node.balance.inc(commission - remain);
@@ -133,37 +147,44 @@ contract RefNetwork is ENDR {
     /**
      * @dev make sure this and _commit can never revert for root node
      */
-    function adaptS(uint rootC) internal {
-        uint targetS = _newTargetS(rootC);
-        S = Math.average(S, targetS);
+    function adaptGlobalLevelStep(uint rootC) internal {
+        uint S = globalLevelStep;
+        assert(S > 0);
+        uint targetS = _newTargetS(rootC, S, epochTotalReward);
+        if (targetS == 0) {
+            return; // no adaption this time
+        }
+        globalLevelStep = Math.average(S, targetS);
+        // reset the end of the next epoch
+        epochEnd = block.timestamp + EPOCH;
+        delete epochTotalRootC;
+        delete epochTotalReward;
     }
 
     /**
      * @dev should never be reverted
-     * @return S*log_2(C/rootC)/ROOT_EXP
+     * @return S*log_2(C/rootC)/ROOT_EXP or 0 to cancel the target adapting process
      */
-    function _newTargetS(uint rootC) internal view returns (uint) {
-        uint _S = S > 1 ? S : 1; // use minimum value for S if it's zero
-        uint C = epochTotalMined;
+    function _newTargetS(uint rootC, uint S, uint C) internal pure returns (uint) {
         if (rootC <= 1) { // root got (almost) no commission
             if (C <= 1) {
-                return; // too little data to process
+                return 0; // too little data to process
             }
             uint lc = util.mostSignificantBit(C); // lc = log2(C/rootC)
-            return _S * lc / ROOT_EXP;
+            return S * lc / ROOT_EXP;
         }
 
         { // scope for local variables
         uint c = C / rootC;
         if (c > MAX_INT64) { // overflow 64x64
             uint lc = util.mostSignificantBit(c); // lc = log2(C/rootC)
-            return _S * lc / ROOT_EXP;
+            return S * lc / ROOT_EXP;
         }
         }
 
         int128 c = ABDKMath64x64.divu(C, rootC);
         int128 lc = c.log_2();
-        return lc.div(ROOT_EXP_64x64).muluc(_S);
+        return lc.div(ROOT_EXP_64x64).muluc(S);
     }
 
     function commitToUpstream(Node storage node, uint commission) internal returns (address) {
