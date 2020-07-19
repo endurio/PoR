@@ -122,19 +122,20 @@ contract RefNetwork is ENDR {
             // TODO: check clean up condition here?
             return commitToUpstream(node, node.commission);
         }
-        // globalLevelStep is a global params, adjust so that root node get approximately 1/32 of the token minted.
+        // globalLevelStep is a global params, adjust so that root node get approximately 1/32 of the token rewarded.
+        uint S = globalLevelStep;
         uint remain;
-        if (globalLevelStep <= 1) {
-            // use minimum value for globalLevelStep if it's zero
+        if (S <= 1) {
+            // use minimum value for S if it's zero
             remain = commission >> r;
         } else {
-            if (r / globalLevelStep > MAX_INT64) { // overflow 64x64
+            if (r / S > MAX_INT64) { // overflow 64x64
                 // take all the remain commission, leave nothing behind
                 node.balance.inc(commission);
                 return ROOT_PARENT; // no more commission to process
             }
-            int128 a = ABDKMath64x64.divu(r, globalLevelStep).neg().exp_2(); // a = 1/2^(r/globalLevelStep) = 2^(-r/globalLevelStep)
-            remain = a.mulu(commission);   // remain = commission / 2^(r/globalLevelStep)
+            int128 a = ABDKMath64x64.divu(r, S).neg().exp_2(); // a = 1/2^(r/S) = 2^(-r/S)
+            remain = a.mulu(commission);   // remain = commission / 2^(r/S)
         }
 
         node.balance.inc(commission - remain);
