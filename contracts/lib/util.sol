@@ -1,9 +1,9 @@
 pragma solidity ^0.6.2;
 
 library util {
-    uint256 constant MaxUint256 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-    int256 constant MaxInt256   = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
-    int256 constant MinInt256   = MaxInt256 + 1;
+    uint256 constant MAX_UINT256 = 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    int256  constant MAX_INT256  = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    int256  constant MIN_INT256  = MAX_INT256 + 1;
 
     function abs(int a) internal pure returns (uint) {
         return uint(a > 0 ? a : -a);
@@ -73,7 +73,7 @@ library util {
             return c;
         }
         // addition overflow
-        return MaxUint256;
+        return MAX_UINT256;
     }
 
     // capped multiply
@@ -93,10 +93,10 @@ library util {
 
         if (inStrictOrder(a, 0, b)) {
             // negative overflown
-            return MinInt256;
+            return MIN_INT256;
         }
         // positive overflown
-        return MaxInt256;
+        return MAX_INT256;
     }
 
     // unsigned capped multiply
@@ -115,7 +115,7 @@ library util {
         }
 
         // overflown
-        return MaxUint256;
+        return MAX_UINT256;
     }
 
     /**
