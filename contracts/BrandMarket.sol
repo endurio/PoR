@@ -4,7 +4,7 @@ pragma solidity >=0.6.2;
 // solium-disable security/no-block-members
 
 import "./lib/util.sol";
-import "./lib/sval.sol";
+import "./lib/suint192.sol";
 import {RefNetwork} from "./RefNetwork.sol";
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 
@@ -12,11 +12,11 @@ import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
  * Market for brands to bid for miner.
  */
 contract BrandMarket is RefNetwork {
-    using sval for SUint;
+    using suint192 for SUint192;
     using BytesLib for bytes;
 
     bytes   constant ENDURIO_MEMO = "endur.io";
-    uint    constant ENDURIO_PAYRATE = 1e18;
+    uint192 constant ENDURIO_PAYRATE = 1e18;
     uint    constant ACTIVE_CONDITION_PAYRATE = 4;  // 4 times payment
     uint    constant PAYRATE_DELAY = 40 minutes;    // decreasing pay rate or deactivating requires a delay
 
@@ -39,10 +39,10 @@ contract BrandMarket is RefNetwork {
     );
 
     struct Brand {
-        bytes   memo;
-        address payer;
-        uint    balance;
-        SUint   payRate; // 18 decimals
+        bytes       memo;
+        address     payer;
+        uint        balance;
+        SUint192    payRate; // 18 decimals
     }
 
     constructor() public RefNetwork() {
@@ -57,8 +57,8 @@ contract BrandMarket is RefNetwork {
      */
     function registerBrand(
         bytes   calldata memo,
-        uint    payRate,           // zero to disable auto activation
-        uint    amount             // initial deposit
+        uint    amount,         // initial deposit
+        uint192 payRate         // zero to disable auto activation
     ) external {
         require(amount >= payRate * ACTIVE_CONDITION_PAYRATE, "not enough deposit for given payrate");
         bytes32 memoHash = keccak256(memo);
@@ -83,7 +83,7 @@ contract BrandMarket is RefNetwork {
     /**
      * activate, cancel any on-going deactivation and set the payRate
      */
-    function activate(bytes32 memoHash, uint payRate) external {
+    function activate(bytes32 memoHash, uint192 payRate) external {
         Brand storage brand = brands[memoHash];
         address payer = brand.payer;
         require(msg.sender == payer, "current payer only");
@@ -115,7 +115,7 @@ contract BrandMarket is RefNetwork {
      * Increasing the pay rate take effect immediately,
      * reducing the payrate requires a delay of 40 mins
      */
-    function _setPayRate(Brand storage brand, uint payRate) internal {
+    function _setPayRate(Brand storage brand, uint192 payRate) internal {
         if (payRate >= brand.payRate.commited()) {
             brand.payRate.commit(payRate);
         } else {
