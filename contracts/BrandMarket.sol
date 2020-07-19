@@ -84,6 +84,7 @@ contract BrandMarket is RefNetwork {
      * activate, cancel any on-going deactivation and set the payRate
      */
     function activate(bytes32 memoHash, uint192 payRate) external {
+        require(payRate > 0, "zero payrate");
         Brand storage brand = brands[memoHash];
         address payer = brand.payer;
         require(msg.sender == payer, "current payer only");
@@ -94,20 +95,13 @@ contract BrandMarket is RefNetwork {
     }
 
     /**
-     * request to deactivate the brand, with an optional delay param
-     * the actual delay time is max(delay, PAYRATE_DELAY = 40 mins)
+     * request to deactivate the brand
      */
-    function deactivate(bytes32 memoHash, uint delay) external {
+    function deactivate(bytes32 memoHash) external {
         Brand storage brand = brands[memoHash];
         require(msg.sender == brand.payer, "current payer only");
         require(brand.payRate.scheduled() > 0, "already pending for deactivation");
-        if (delay == 0) {
-            brand.payRate.schedule(0, PAYRATE_DELAY);
-        } else {
-            require(delay > PAYRATE_DELAY, "delay too short");
-            require(block.timestamp + delay > block.timestamp, "delay too long"); // overflown
-            brand.payRate.schedule(0, delay);
-        }
+        brand.payRate.schedule(0, PAYRATE_DELAY);
         emit Deactive(memoHash);
     }
 
