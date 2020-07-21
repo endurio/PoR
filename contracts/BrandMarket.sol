@@ -3,15 +3,17 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
+import "./interfaces/IRefNet.sol";
+import "./lib/ds.sol";
 import "./lib/util.sol";
 import "./lib/suint192.sol";
-import {RefNetwork} from "./RefNetwork.sol";
+import "./ENDR.sol";
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 
 /**
  * Market for brands to bid for miner.
  */
-contract BrandMarket is RefNetwork {
+contract BrandMarket is ENDR {
     using suint192 for SUint192;
     using BytesLib for bytes;
 
@@ -19,8 +21,10 @@ contract BrandMarket is RefNetwork {
     uint192 constant ENDURIO_PAYRATE = 1e18;
     uint    constant ACTIVE_CONDITION_PAYRATE = 4;  // 4 times payment
     uint    constant PAYRATE_DELAY = 40 minutes;    // decreasing pay rate or deactivating requires a delay
+    bytes32 constant REFNET_CONTRACT_KEY = "Referral Network Contract Key";
 
-    mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
+    address public REFNET_CONTRACT;             // hold both token deposited to BrandMarket and RefNet
+    mapping(bytes32 => Brand) internal brands;  // keccak(brand.memo) => Brand
 
     event Active(
         bytes32 indexed memoHash,
@@ -45,7 +49,10 @@ contract BrandMarket is RefNetwork {
         SUint192    payRate; // 18 decimals
     }
 
-    constructor() public RefNetwork() {
+    function initialize(address refNetContract) public {
+        require(REFNET_CONTRACT != address(0x0), "already initialized");
+        REFNET_CONTRACT = address(IRefNet(refNetContract));
+
         Brand storage brand = brands[keccak256(ENDURIO_MEMO)];
         brand.payer = address(this);
         brand.payRate.commit(ENDURIO_PAYRATE);
@@ -71,9 +78,9 @@ contract BrandMarket is RefNetwork {
             require(msg.sender != payer, "re-register not allowed");
             // brand can be overtaken when (1) brand is inactive or (2) new pay rate is better
             require(payRate > brand.payRate.commited(), "pay rate too low for overtaking");
-            _transfer(address(this), payer, brand.balance); // refund the old payer
+            _transfer(REFNET_CONTRACT, payer, brand.balance); // refund the old payer
         }
-        _transfer(msg.sender, address(this), amount);
+        _transfer(msg.sender, REFNET_CONTRACT, amount);
         brand.payer = msg.sender;
         brand.balance = amount;
         _setPayRate(brand, payRate);
@@ -124,7 +131,7 @@ contract BrandMarket is RefNetwork {
         require(brand.payRate.commited() == 0, "brand not deactivated");
         uint balance = brand.balance;
         require(balance > 0, "empty balance");
-        _transfer(address(this), payer, balance);
+        _transfer(REFNET_CONTRACT, payer, balance);
     }
 
     /**
@@ -144,7 +151,7 @@ contract BrandMarket is RefNetwork {
     }
 
     function _depositToBrand(Brand storage brand, uint amount) internal {
-        _transfer(msg.sender, address(this), amount);
+        _transfer(msg.sender, REFNET_CONTRACT, amount);
         brand.balance += amount;
     }
 
@@ -156,20 +163,23 @@ contract BrandMarket is RefNetwork {
         address payee,
         uint rewardRate
     ) internal {
-        uint paid = takeReward(memoHash, rewardRate);
-        reward(payee, paid);    // reward the miner and upstream in the ref network
         Brand storage brand = brands[memoHash];
-        emit Pay(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
+        address payer = brand.payer;
+        uint paid = takeReward(memoHash, payer, rewardRate);
+        // token is already mint/sent to REFNET_CONTRACT
+        IRefNet(REFNET_CONTRACT).reward(payee, paid);    // reward the miner and upstream in the ref network
+        emit Pay(memoHash, brand.memo.toBytes32(), payer, payee, rewardRate);
     }
 
     /**
      * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
+     *
+     * note: reward token is mint/sent directly to REFNET_CONTRACT
      */
-    function takeReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
+    function takeReward(bytes32 memoHash, address payer, uint rewardRate) internal returns (uint) {
         Brand storage brand = brands[memoHash];
-        address payer = brand.payer;
         if (payer == address(this)) {   // endur.io
-            _mint(address(this), rewardRate);
+            _mint(REFNET_CONTRACT, rewardRate);
             return rewardRate;
         }
         uint payRate = brand.payRate.commited();
@@ -184,6 +194,7 @@ contract BrandMarket is RefNetwork {
                 brand.payRate.schedule(0, PAYRATE_DELAY);
                 emit Deactive(memoHash);
             }
+            // _transfer(address(this), REFNET_CONTRACT, amount);  // no need, token already at REFNET_CONTRACT
             return amount;
         } else {
             // exhaust the balance
@@ -191,6 +202,7 @@ contract BrandMarket is RefNetwork {
             // forced commit a deactivation
             brand.payRate.commit(0);
             emit Deactive(memoHash);
+            // _transfer(address(this), REFNET_CONTRACT, balance);  // no need, token already at REFNET_CONTRACT
             return balance;
         }
     }

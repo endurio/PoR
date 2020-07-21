@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.2;
 
+import "./interfaces/IRefNet.sol";
 import "./lib/util.sol";
 import "./lib/lval.sol";
 import "./lib/tadr.sol";
-import "./ENDR.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 
 /**
  * Referral Network
  */
-contract RefNetwork is ENDR {
+contract RefNetwork is IRefNet {
     uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192) - 1;
 
@@ -25,6 +25,7 @@ contract RefNetwork is ENDR {
     uint    constant ROOT_EXP       = 5; // root commssion ~> TotalMined / 2^5
     int128  constant ROOT_EXP_64x64 = int128(ROOT_EXP << 64); // ABDKMath64x64.fromUInt(ROOT_EXP);
 
+    address BRAND_MARKET_CONTRACT;
     mapping(address => Node) nodes;
 
     // System Variables
@@ -42,7 +43,10 @@ contract RefNetwork is ENDR {
 
     uint constant EPOCH = 1 weeks;
 
-    constructor() public ENDR() {
+    function initialize(address brandMarketContract) public {
+        require(BRAND_MARKET_CONTRACT != address(0x0), "already initialized");
+        // TODO: verify brandMarket interface
+        BRAND_MARKET_CONTRACT = brandMarketContract;
         // init the root node at ROOT_ADDRESS, with parrent at ROOT_PARENT
         Node storage root = nodes[ROOT_ADDRESS];
         root.parent.forceTo(ROOT_PARENT, 0);
@@ -67,7 +71,8 @@ contract RefNetwork is ENDR {
      *
      * Note: half of the reward is distributed to miner, the other half is for upstream commission.
      */
-    function reward(address miner, uint amount) internal {
+    function reward(address miner, uint amount) external override {
+        require(msg.sender == BRAND_MARKET_CONTRACT, "BrandMarket only");
         Node storage node = nodes[miner];
         if (!node.exists()) {
             _attach(miner, ROOT_ADDRESS);
