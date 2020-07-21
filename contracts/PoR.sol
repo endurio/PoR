@@ -5,13 +5,15 @@ import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
-import {util} from "./lib/util.sol";
-import {BrandMarket} from "./BrandMarket.sol";
+import "./lib/util.sol";
+import "./DataStructure.sol";
 
 /**
  * Proof of Reference
+ *
+ * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract PoR is BrandMarket {
+contract PoR is DataStructure {
     uint constant COMMIT_TIMEOUT = 10 minutes;
 
     uint constant MAX_TARGET = 0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
@@ -29,28 +31,6 @@ contract PoR is BrandMarket {
     using BTCUtils for uint256;
     using BytesLib for bytes;
     // using SafeMath for uint256;
-
-    mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
-    mapping(bytes32 => Header) internal headers;
-
-    struct Header {
-        bytes32 merkleRoot;
-        uint target;
-        uint32  timestamp;
-
-        // PoR data
-        int minable; // ref count for winner keys
-        mapping(bytes32 => Transaction) winner; // keccak(brand.memo) => winning tx
-    }
-
-    struct Transaction {
-        bytes32 id;
-        bytes32 outpointTxLE;
-        bytes outpointIndexLE; // 4 bytes LE integer
-    }
-
-    constructor() public BrandMarket() {
-    }
 
     function mine(
         bytes32 _blockHash,
@@ -100,6 +80,70 @@ contract PoR is BrandMarket {
 
             // TODO: clean up and rate adjustment here
         }
+    }
+
+    /**
+     * for PoR to pay for the miner
+     */
+    function pay(
+        bytes32 memoHash,
+        address payee,
+        uint rewardRate
+    ) internal {
+        uint paid = takeReward(memoHash, rewardRate);
+        reward(payee, paid);    // reward the miner and upstream in the ref network
+        Brand storage brand = brands[memoHash];
+        emit Pay(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
+    }
+
+    /**
+     * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
+     */
+    function takeReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
+        Brand storage brand = brands[memoHash];
+        address payer = brand.payer;
+        if (payer == address(this)) {   // endur.io
+            _mint(address(this), rewardRate);
+            return rewardRate;
+        }
+        uint payRate = brand.payRate.commited();
+        require(payRate > 0, "brand not active");
+        uint amount = util.mulCap(payRate, rewardRate) / 1e18;
+        uint balance = brand.balance;
+        if (amount < balance) {
+            balance -= amount; // safe
+            brand.balance = balance;
+            if (balance < payRate * ACTIVE_CONDITION_PAYRATE) {
+                // schedule the deactivation
+                brand.payRate.schedule(0, PAYRATE_DELAY);
+                emit Deactive(memoHash);
+            }
+            return amount;
+        } else {
+            // exhaust the balance
+            delete brand.balance;
+            // forced commit a deactivation
+            brand.payRate.commit(0);
+            emit Deactive(memoHash);
+            return balance;
+        }
+    }
+
+    /**
+     * reward the miner an amount of token, and commit another amount of token to the upstream referal
+     *
+     * Note: half of the reward is distributed to miner, the other half is for upstream commission.
+     */
+    function reward(address miner, uint amount) internal {
+        Node storage node = nodes[miner];
+        if (!node.exists()) {
+            _attach(miner, ROOT_ADDRESS);
+        }
+        assert(node.exists());
+        uint commission = amount >> 1;
+        node.balance.inc(amount - commission); // safe
+        commitToUpstream(node, commission);
+        epochTotalReward = util.addCap(epochTotalReward, amount);
     }
 
     function extractPKH(

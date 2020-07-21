@@ -5,47 +5,22 @@ pragma solidity >=0.6.2;
 
 import "./lib/util.sol";
 import "./lib/suint192.sol";
-import {RefNetwork} from "./RefNetwork.sol";
+import "./DataStructure.sol";
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 
 /**
  * Market for brands to bid for miner.
+ *
+ * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract BrandMarket is RefNetwork {
+contract BrandMarket is DataStructure {
     using suint192 for SUint192;
     using BytesLib for bytes;
 
-    bytes   constant ENDURIO_MEMO = "endur.io";
-    uint192 constant ENDURIO_PAYRATE = 1e18;
-    uint    constant ACTIVE_CONDITION_PAYRATE = 4;  // 4 times payment
-    uint    constant PAYRATE_DELAY = 40 minutes;    // decreasing pay rate or deactivating requires a delay
+    bytes   constant ENDURIO_MEMO               = "endur.io";
+    uint192 constant ENDURIO_PAYRATE            = 1e18;
 
-    mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
-
-    event Active(
-        bytes32 indexed memoHash,
-        bytes32         memo,       // the first 32 bytes of the memo
-        uint            payRate,
-        address indexed payer,
-        uint            balance
-    );
-    event Deactive(bytes32 indexed memoHash);
-    event Pay(
-        bytes32 indexed memoHash,
-        bytes32         memo,       // the first 32 bytes of the memo
-        address indexed payer,
-        address indexed payee,
-        uint            amount
-    );
-
-    struct Brand {
-        bytes       memo;
-        address     payer;
-        uint        balance;
-        SUint192    payRate; // 18 decimals
-    }
-
-    constructor() public RefNetwork() {
+    constructor() public {
         Brand storage brand = brands[keccak256(ENDURIO_MEMO)];
         brand.payer = address(this);
         brand.payRate.commit(ENDURIO_PAYRATE);
@@ -146,52 +121,5 @@ contract BrandMarket is RefNetwork {
     function _depositToBrand(Brand storage brand, uint amount) internal {
         _transfer(msg.sender, address(this), amount);
         brand.balance += amount;
-    }
-
-    /**
-     * for PoR to pay for the miner
-     */
-    function pay(
-        bytes32 memoHash,
-        address payee,
-        uint rewardRate
-    ) internal {
-        uint paid = takeReward(memoHash, rewardRate);
-        reward(payee, paid);    // reward the miner and upstream in the ref network
-        Brand storage brand = brands[memoHash];
-        emit Pay(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
-    }
-
-    /**
-     * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
-     */
-    function takeReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
-        Brand storage brand = brands[memoHash];
-        address payer = brand.payer;
-        if (payer == address(this)) {   // endur.io
-            _mint(address(this), rewardRate);
-            return rewardRate;
-        }
-        uint payRate = brand.payRate.commited();
-        require(payRate > 0, "brand not active");
-        uint amount = util.mulCap(payRate, rewardRate) / 1e18;
-        uint balance = brand.balance;
-        if (amount < balance) {
-            balance -= amount; // safe
-            brand.balance = balance;
-            if (balance < payRate * ACTIVE_CONDITION_PAYRATE) {
-                // schedule the deactivation
-                brand.payRate.schedule(0, PAYRATE_DELAY);
-                emit Deactive(memoHash);
-            }
-            return amount;
-        } else {
-            // exhaust the balance
-            delete brand.balance;
-            // forced commit a deactivation
-            brand.payRate.commit(0);
-            emit Deactive(memoHash);
-            return balance;
-        }
     }
 }

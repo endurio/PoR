@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.2;
 
+// solium-disable security/no-block-members
+
 import "./lib/util.sol";
 import "./lib/lval.sol";
 import "./lib/tadr.sol";
-import "./ENDR.sol";
+import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 
 /**
  * Referral Network
+ *
+ * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract RefNetwork is ENDR {
+contract RefNetwork is DataStructure {
     uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192) - 1;
 
@@ -20,34 +24,22 @@ contract RefNetwork is ENDR {
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
-    address constant ROOT_ADDRESS   = address(0x0);
-    address constant ROOT_PARENT    = address(0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF);
     uint    constant ROOT_EXP       = 5; // root commssion ~> TotalMined / 2^5
     int128  constant ROOT_EXP_64x64 = int128(ROOT_EXP << 64); // ABDKMath64x64.fromUInt(ROOT_EXP);
 
-    mapping(address => Node) nodes;
-
-    // System Variables
-
-    /**
-     * @dev commission half for every globalLevelStep of rent up the stream.
-     * @dev globalLevelStep must never be zero.
-     */
-    uint globalLevelStep = 1;
-
-    // uint totalRent;          // total active rent of the network
-    uint epochEnd;
-    uint epochTotalReward;      // track the total reward for this epoch;
-    uint epochTotalRootC;       // track the total commission for root node for this epoch;
-
     uint constant EPOCH = 1 weeks;
 
-    constructor() public ENDR() {
+    constructor() public {
+        root = msg.sender;
         // init the root node at ROOT_ADDRESS, with parrent at ROOT_PARENT
-        Node storage root = nodes[ROOT_ADDRESS];
-        root.parent.forceTo(ROOT_PARENT, 0);
+        nodes[ROOT_ADDRESS].parent.forceTo(ROOT_PARENT, 0);
         // init the end of the first epoch
         epochEnd = block.timestamp + EPOCH;
+    }
+
+    function changeRoot(address newRoot) external {
+        require(msg.sender == root || msg.sender == owner, "owner or root only");
+        root = newRoot;
     }
 
     /**
@@ -58,30 +50,10 @@ contract RefNetwork is ENDR {
         _attach(msg.sender, parent);
     }
 
-    function _attach(address noder, address parent) internal {
-        nodes[noder].parent.transferTo(parent);
-    }
-
-    /**
-     * reward the miner an amount of token, and commit another amount of token to the upstream referal
-     *
-     * Note: half of the reward is distributed to miner, the other half is for upstream commission.
-     */
-    function reward(address miner, uint amount) internal {
-        Node storage node = nodes[miner];
-        if (!node.exists()) {
-            _attach(miner, ROOT_ADDRESS);
-        }
-        assert(node.exists());
-        uint commission = amount >> 1;
-        node.balance.inc(amount - commission); // safe
-        commitToUpstream(node, commission);
-        epochTotalReward = util.addCap(epochTotalReward, amount);
-    }
-
     /**
      * claim the accumulate commission, can be executed by anyone
      */
+     // solium-disable-next-line security/no-assign-params
     function commitChain(address noder, uint depth) external {
         for (uint i = 0; i < depth; ++i) {
             noder = _commit(noder);
@@ -109,7 +81,7 @@ contract RefNetwork is ENDR {
             node.balance.rawInc(commission);
             uint rootC = util.addCap(epochTotalRootC, commission);
             // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
-            if (epochEnd <= block.timestamp) { 
+            if (epochEnd <= block.timestamp) {
                 adaptGlobalLevelStep(rootC);
             } else {
                 epochTotalRootC = rootC;
@@ -186,50 +158,5 @@ contract RefNetwork is ENDR {
         int128 c = ABDKMath64x64.divu(C, rootC);
         int128 lc = c.log_2();
         return lc.div(ROOT_EXP_64x64).muluc(S);
-    }
-
-    function commitToUpstream(Node storage node, uint commission) internal returns (address) {
-        (address parent, uint96 mtime) = node.parent.extract();
-        Node storage parentNode = nodes[parent];
-        assert(parentNode.exists());
-
-        if (mtime <= block.timestamp) { // matured
-            parentNode.incCommissionCapped(commission);
-            return parent;
-        }
-
-        // maturing address transfer here
-        (uint dividend, uint divisor, address oldParent) = node.parent.maturingRate(mtime);
-        assert(dividend <= divisor);
-        uint newC = util.scaleDown(commission, dividend, divisor);
-        parentNode.incCommissionCapped(newC);
-        Node storage oldParentNode = nodes[oldParent];
-        assert(oldParentNode.exists());
-        oldParentNode.incCommissionCapped(commission - newC);
-
-        return parent;
-    }
-}
-
-struct Node {
-    TAddress    parent;
-    LUint       balance;
-    uint        commission; // total unclaimed commission for this node and upstream
-}
-
-library libnode {
-    using tadr for TAddress;
-
-    /**
-     * nodes with parent is root, will have the expiredTime != 0
-     * root node has expiredTime == 0 but the parent address is 0xFF..FF
-     */
-    function exists(Node storage n) internal view returns (bool) {
-        return n.parent.exists();
-    }
-
-    // increase the node commission, the new value is safely capped at MAX_UINT256
-    function incCommissionCapped(Node storage n, uint commission) internal {
-        n.commission = util.addCap(n.commission, commission);
     }
 }
