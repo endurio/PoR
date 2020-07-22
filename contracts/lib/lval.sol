@@ -74,6 +74,10 @@ library lval {
         lv.rate = rate;
     }
 
+    function getLeakingRate(LUint storage lv) internal view returns (uint) {
+        return lv.rate;
+    }
+
     // raw value, disregard of leaking rate
     function rawValue(LUint storage lv) internal view returns (uint) {
         return lv.value;

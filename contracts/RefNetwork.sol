@@ -50,6 +50,58 @@ contract RefNetwork is DataStructure {
         _attach(msg.sender, parent);
     }
 
+    function deposit(uint amount) external {
+        Node storage node = nodes[msg.sender];
+        require(node.exists(), "no such node");
+        _transfer(msg.sender, address(this), amount);
+        node.balance.inc(amount);
+    }
+
+    function withdraw(uint amount) external {
+        Node storage node = nodes[msg.sender];
+        // require(node.exists(), "no such node"); // the next line will verify node existent
+        node.balance.dec(amount);
+        _transfer(address(this), msg.sender, amount);
+    }
+
+    function setRent(uint rent) external {
+        Node storage node = nodes[msg.sender];
+        require(node.exists(), "no such node");
+        require(rent != node.balance.getLeakingRate(), "unchanged rent");
+        _commit(msg.sender);
+        node.balance.setLeakingRate(rent);
+    }
+
+    function getRent() external view returns (uint) {
+        Node storage node = nodes[msg.sender];
+        require(node.exists(), "no such node");
+        return node.balance.getLeakingRate();
+    }
+
+    /**
+     * re-attach this node to the nearest ancestor with non-zero effective rent up the stream
+     */
+    function flatten(address noder) external {
+        require(noder != ROOT_ADDRESS, "node account required"); // defensive
+        Node storage node = nodes[noder];
+        require(node.exists(), "no such node"); // defensive
+        (address parent,) = node.parent.extract();
+        address newParent = _findFlattenedParent(parent);
+        if (newParent != parent) {
+            // found new parent, re-attach
+            node.parent.forceTo(parent);
+        }
+    }
+
+    // TODO: use a rent threshold instead, governance?
+    function _findFlattenedParent(address parent) internal view returns (address) {
+        // keep searching up-stream until an ancestor with non-zero effective rent found
+        while (parent != ROOT_ADDRESS && nodes[parent].getEffectiveRent() == 0) {
+            (parent,) = nodes[parent].parent.extract();
+        }
+        return parent;
+    }
+
     /**
      * claim the accumulate commission, can be executed by anyone
      */
@@ -76,6 +128,9 @@ contract RefNetwork is DataStructure {
     function _commit(address noder) internal returns (address) {
         Node storage node = nodes[noder];
         uint commission = node.commission;
+        if (commission == 0) {
+            return ROOT_PARENT;
+        }
         if (noder == ROOT_ADDRESS) {
             // root node alway take all the remain commission
             node.balance.rawInc(commission);
@@ -89,9 +144,9 @@ contract RefNetwork is DataStructure {
             return ROOT_PARENT;
         }
         require(node.exists(), "node not exists");
-        uint r = node.balance.getEffectiveLeakingRate();
+        uint r = node.getEffectiveRent();
         if (r == 0) {
-            // TODO: check clean up condition here?
+            // TBD: check flattening condition here?
             return commitToUpstream(node, node.commission);
         }
         // globalLevelStep is a global params, adjust so that root node get approximately 1/32 of the token rewarded.

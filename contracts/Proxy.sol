@@ -47,14 +47,20 @@ contract Proxy is DataStructure {
         impls[0xbeba8022] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x8e19899e] = implBrandMarket;    // withdraw
-        impls[0xc0af347a] = implBrandMarket;    // depositToBrand
-        impls[0x491d1d00] = implBrandMarket;    // depositToBrand
+        impls[0x1de26e16] = implBrandMarket;    // deposit
+        impls[0xd954863c] = implBrandMarket;    // deposit
         impls[0x59f78a47] = implPoR;            // mine
         impls[0xa740a4ac] = implPoR;            // commitTx
         impls[0xd02898cf] = implPoR;            // commitBlock
         impls[0x495dd54b] = implPoR;            // registerMiner
         impls[0x0aa0738f] = implPoR;            // changeMiner
+        impls[0x4a7902d2] = implRefNet;         // changeRoot
         impls[0x7a0ca1e2] = implRefNet;         // attach
+        impls[0xb6b55f25] = implRefNet;         // deposit
+        impls[0x2e1a7d4d] = implRefNet;         // withdraw
+        impls[0xb12a6852] = implRefNet;         // setRent
+        impls[0xe0719564] = implRefNet;         // getRent
+        impls[0x7dd55a78] = implRefNet;         // flatten
         impls[0x75d3e9d4] = implRefNet;         // commitChain
         impls[0x369e8c1d] = implRefNet;         // commit
     }

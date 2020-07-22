@@ -123,6 +123,7 @@ struct Node {
 
 library libnode {
     using tadr for TAddress;
+    using lval for LUint;
 
     /**
      * nodes with parent is root, will have the expiredTime != 0
@@ -135,6 +136,10 @@ library libnode {
     // increase the node commission, the new value is safely capped at MAX_UINT256
     function incCommissionCapped(Node storage n, uint commission) internal {
         n.commission = util.addCap(n.commission, commission);
+    }
+
+    function getEffectiveRent(Node storage n) internal view returns (uint) {
+        return n.balance.getEffectiveLeakingRate();
     }
 }
 

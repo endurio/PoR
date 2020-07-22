@@ -105,14 +105,14 @@ contract BrandMarket is DataStructure {
     /**
      * deposit to a brand regardless of its payer
      */
-    function depositToBrand(bytes32 memoHash, uint amount) external {
+    function deposit(bytes32 memoHash, uint amount) external {
         _depositToBrand(brands[memoHash], amount);
     }
 
     /**
      * deposit to a brand with given payer
      */
-    function depositToBrand(bytes32 memoHash, address payer, uint amount) external {
+    function deposit(bytes32 memoHash, address payer, uint amount) external {
         Brand storage brand = brands[memoHash];
         require(brand.payer == payer, "payer mismatches");
         _depositToBrand(brand, amount);
