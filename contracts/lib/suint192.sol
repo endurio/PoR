@@ -2,6 +2,8 @@
 pragma solidity ^0.6.2;
 // solium-disable security/no-block-members
 
+import "./time.sol";
+
 struct SUint192 {
     bytes32 scheduledData; // scheduledTime(8 bytes) + scheduledValue (24 bytes)
     uint192 commitedValue;
@@ -13,7 +15,7 @@ struct SUint192 {
 library suint192 {
     function commited(SUint192 storage sv) internal view returns (uint192) {
         bytes32 scheduledData = sv.scheduledData;   // SLOAD
-        if (uint64(bytes8(scheduledData)) <= block.timestamp) {
+        if (uint64(bytes8(scheduledData)) <= time.blockTimestamp()) {
             return uint192(uint256(scheduledData));
         }
         return sv.commitedValue;                    // SLOAD
@@ -24,17 +26,17 @@ library suint192 {
     }
 
     function isScheduling(SUint192 storage sv) internal view returns (bool) {
-        return block.timestamp < uint64(bytes8(sv.scheduledData));
+        return time.blockTimestamp() < uint64(bytes8(sv.scheduledData));
     }
 
-    // @unsafe: (block.timestamp + delay) can overflow uint64
+    // @unsafe: (time.blockTimestamp() + delay) can overflow uint64
     function schedule(SUint192 storage sv, uint192 value, uint delay) internal {
         bytes32 scheduledData = sv.scheduledData;                           // SLOAD
-        if (uint64(bytes8(scheduledData)) <= block.timestamp) {
+        if (uint64(bytes8(scheduledData)) <= time.blockTimestamp()) {
             // commit the scheduled value that reached scheduled time
             sv.commitedValue = uint192(uint256(scheduledData));             // SSTORE
         }
-        uint64 scheduledTime = uint64(block.timestamp + delay);
+        uint64 scheduledTime = uint64(time.blockTimestamp() + delay);
         sv.scheduledData = bytes32(uint(value) | (scheduledTime << 192));   // SSTORE
     }
 

@@ -9,6 +9,7 @@ import "./lib/tadr.sol";
 import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/math/Math.sol";
+import "./lib/time.sol";
 
 /**
  * Referral Network
@@ -34,7 +35,7 @@ contract RefNetwork is DataStructure {
         // init the root node at ROOT_ADDRESS, with parrent at ROOT_PARENT
         nodes[ROOT_ADDRESS].parent.forceTo(ROOT_PARENT, 0);
         // init the end of the first epoch
-        epochEnd = block.timestamp + EPOCH;
+        epochEnd = time.blockTimestamp() + EPOCH;
     }
 
     function getRoot() external view returns (address) {
@@ -142,7 +143,7 @@ contract RefNetwork is DataStructure {
             node.balance.rawInc(commission);
             uint rootC = util.addCap(epochTotalRootC, commission);
             // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
-            if (epochEnd <= block.timestamp) {
+            if (epochEnd <= time.blockTimestamp()) {
                 adaptGlobalLevelStep(rootC);
             } else {
                 epochTotalRootC = rootC;
@@ -190,7 +191,7 @@ contract RefNetwork is DataStructure {
         }
         globalLevelStep = Math.average(S, targetS);
         // reset the end of the next epoch
-        epochEnd = block.timestamp + EPOCH;
+        epochEnd = time.blockTimestamp() + EPOCH;
         delete epochTotalRootC;
         delete epochTotalReward;
     }

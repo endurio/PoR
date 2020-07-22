@@ -3,6 +3,7 @@ pragma solidity ^0.6.2;
 // solium-disable security/no-block-members
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
+import "./time.sol";
 
 struct LUint {
     uint value;     // value in the lastTouch;
@@ -18,7 +19,7 @@ library lval {
      * peek the current value without modify the storage
      */
     function peek(LUint storage lv) internal view returns (uint) {
-        // assert: lastTouch <= block.timestamp
+        // assert: lastTouch <= time.blockTimestamp()
         uint value = lv.value;
         if (value == 0) {
             return 0;
@@ -27,7 +28,7 @@ library lval {
         if (rate == 0) {
             return value;
         }
-        uint elapsed = block.timestamp - lv.lastTouch;
+        uint elapsed = time.blockTimestamp() - lv.lastTouch;
         // if (elapsed == 0) {
         //     return value;
         // }
@@ -54,19 +55,19 @@ library lval {
         uint value = peek(lv);
         if (lv.value != value) {
             lv.value = value;
-            lv.lastTouch = block.timestamp;
+            lv.lastTouch = time.blockTimestamp();
         }
         return value;
     }
 
     function inc(LUint storage lv, uint value) internal {
         lv.value = SafeMath.add(peek(lv), value);
-        lv.lastTouch = block.timestamp;
+        lv.lastTouch = time.blockTimestamp();
     }
 
     function dec(LUint storage lv, uint value) internal {
         lv.value = SafeMath.sub(peek(lv), value, "LeakingValue: decrement overflow");
-        lv.lastTouch = block.timestamp;
+        lv.lastTouch = time.blockTimestamp();
     }
 
     function setLeakingRate(LUint storage lv, uint rate) internal {

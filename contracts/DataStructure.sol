@@ -9,6 +9,7 @@ import "./lib/util.sol";
 import "./lib/tadr.sol";
 import "./lib/lval.sol";
 import "./lib/suint192.sol";
+import "./lib/time.sol";
 
 /**
  * Data Structure and common logic
@@ -93,7 +94,7 @@ contract DataStructure is ERC20 {
         Node storage parentNode = nodes[parent];
         assert(parentNode.exists());
 
-        if (mtime <= block.timestamp) { // matured
+        if (mtime <= time.blockTimestamp()) { // matured
             parentNode.incCommissionCapped(commission);
             return parent;
         }
