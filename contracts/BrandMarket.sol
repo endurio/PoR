@@ -30,7 +30,7 @@ contract BrandMarket is DataStructure {
     /**
      * Register/take over, deposit and active a brand
      */
-    function registerBrand(
+    function register(
         bytes   calldata memo,
         uint    amount,         // initial deposit
         uint192 payRate         // zero to disable auto activation
@@ -106,7 +106,7 @@ contract BrandMarket is DataStructure {
      * deposit to a brand regardless of its payer
      */
     function deposit(bytes32 memoHash, uint amount) external {
-        _depositToBrand(brands[memoHash], amount);
+        _deposit(brands[memoHash], amount);
     }
 
     /**
@@ -115,10 +115,10 @@ contract BrandMarket is DataStructure {
     function deposit(bytes32 memoHash, address payer, uint amount) external {
         Brand storage brand = brands[memoHash];
         require(brand.payer == payer, "payer mismatches");
-        _depositToBrand(brand, amount);
+        _deposit(brand, amount);
     }
 
-    function _depositToBrand(Brand storage brand, uint amount) internal {
+    function _deposit(Brand storage brand, uint amount) internal {
         _transfer(msg.sender, address(this), amount);
         brand.balance += amount;
     }

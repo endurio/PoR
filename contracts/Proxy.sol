@@ -43,7 +43,7 @@ contract Proxy is DataStructure {
         impls[0x23b872dd] = implERC20;          // transferFrom
         impls[0x39509351] = implERC20;          // increaseAllowance
         impls[0xa457c2d7] = implERC20;          // decreaseAllowance
-        impls[0x7d484b78] = implBrandMarket;    // registerBrand
+        impls[0x231ab4bd] = implBrandMarket;    // register
         impls[0xbeba8022] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x8e19899e] = implBrandMarket;    // withdraw
