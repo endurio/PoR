@@ -54,7 +54,8 @@ contract Proxy is DataStructure {
         impls[0xd02898cf] = implPoR;            // commitBlock
         impls[0x495dd54b] = implPoR;            // registerMiner
         impls[0x0aa0738f] = implPoR;            // changeMiner
-        impls[0x4a7902d2] = implRefNet;         // changeRoot
+        impls[0x5ca1e165] = implRefNet;         // getRoot
+        impls[0x003ba1ed] = implRefNet;         // setRoot
         impls[0x7a0ca1e2] = implRefNet;         // attach
         impls[0xb6b55f25] = implRefNet;         // deposit
         impls[0x2e1a7d4d] = implRefNet;         // withdraw
@@ -97,7 +98,11 @@ contract Proxy is DataStructure {
         emit Implementation(sign, impl);
     }
 
-    function changeOwner(address newOwner) external {
+    function getOwner() external view returns (address) {
+        return owner;
+    }
+
+    function setOwner(address newOwner) external {
         require(msg.sender == owner, "owner only");
         owner = newOwner;
     }

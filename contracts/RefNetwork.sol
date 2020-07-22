@@ -37,7 +37,11 @@ contract RefNetwork is DataStructure {
         epochEnd = block.timestamp + EPOCH;
     }
 
-    function changeRoot(address newRoot) external {
+    function getRoot() external view returns (address) {
+        return root;
+    }
+
+    function setRoot(address newRoot) external {
         require(msg.sender == root || msg.sender == owner, "owner or root only");
         root = newRoot;
     }
