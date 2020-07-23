@@ -24,25 +24,28 @@ contract Proxy is DataStructure {
     event Implementation(bytes32 indexed signature, address indexed implementation);
 
     constructor(
-        address implERC20,
+        // address implERC20,
         address implBrandMarket,
         address implRefNet,
         address implPoR
     ) public {
         owner = msg.sender; // responsible for contract upgrade
+
+        // All ERC20 functions are not upgradable
+        // impls[0xbe45fd62] = implERC20;          // ENDR.transfer
+        // impls[0x06fdde03] = implERC20;          // name
+        // impls[0x95d89b41] = implERC20;          // symbol
+        // impls[0x313ce567] = implERC20;          // decimals
+        // impls[0x18160ddd] = implERC20;          // totalSupply
+        // impls[0x70a08231] = implERC20;          // balanceOf
+        // impls[0xa9059cbb] = implERC20;          // transfer
+        // impls[0xdd62ed3e] = implERC20;          // allowance
+        // impls[0x095ea7b3] = implERC20;          // approve
+        // impls[0x23b872dd] = implERC20;          // transferFrom
+        // impls[0x39509351] = implERC20;          // increaseAllowance
+        // impls[0xa457c2d7] = implERC20;          // decreaseAllowance
+
         // TODO: write a script to auto-generate this map
-        impls[0xbe45fd62] = implERC20;          // ENDR.transfer
-        impls[0x06fdde03] = implERC20;          // name
-        impls[0x95d89b41] = implERC20;          // symbol
-        impls[0x313ce567] = implERC20;          // decimals
-        impls[0x18160ddd] = implERC20;          // totalSupply
-        impls[0x70a08231] = implERC20;          // balanceOf
-        impls[0xa9059cbb] = implERC20;          // transfer
-        impls[0xdd62ed3e] = implERC20;          // allowance
-        impls[0x095ea7b3] = implERC20;          // approve
-        impls[0x23b872dd] = implERC20;          // transferFrom
-        impls[0x39509351] = implERC20;          // increaseAllowance
-        impls[0xa457c2d7] = implERC20;          // decreaseAllowance
         impls[0x231ab4bd] = implBrandMarket;    // register
         impls[0xbeba8022] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
@@ -64,6 +67,18 @@ contract Proxy is DataStructure {
         impls[0x7dd55a78] = implRefNet;         // flatten
         impls[0x75d3e9d4] = implRefNet;         // commitChain
         impls[0x369e8c1d] = implRefNet;         // commit
+    }
+
+    /**
+     * Extra function to attach a message to a transfer
+     *
+     * Requirements:
+     * - `recipient` cannot be the zero address.
+     * - the caller must have a balance of at least `amount`.
+     */
+    function transfer(address recipient, uint256 amount, bytes calldata) external returns (bool) {
+        _transfer(_msgSender(), recipient, amount);
+        return true;
     }
 
     /**
