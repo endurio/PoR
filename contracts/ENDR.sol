@@ -11,11 +11,11 @@ import "./lib/util.sol";
 import "./DataStructure.sol";
 
 /**
- * Upgradable Proxy with 3 implementation contracts for: PoR, BrandMarket and RefNetwork
+ * ENDR is an ERC20 and an Upgradable Proxy with 3 implementation contracts: PoR, BrandMarket and RefNetwork
  *
  * @dev proxy class can't have any (structured) state variable, all state is located in DataStructure
  */
-contract Proxy is DataStructure {
+contract ENDR is DataStructure {
     /**
      * @dev Emitted when the implementation is changed.
      * @param signature 4-bytes function signature.
