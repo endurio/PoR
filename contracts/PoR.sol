@@ -14,7 +14,7 @@ import "./DataStructure.sol";
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract PoR is DataStructure {
-    uint constant COMMIT_TIMEOUT = 10 minutes;
+    uint constant MINING_TIME = 1 hours;
 
     uint constant MAX_TARGET = 0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
 
@@ -32,7 +32,7 @@ contract PoR is DataStructure {
     using BytesLib for bytes;
     // using SafeMath for uint256;
 
-    function mine(
+    function claim(
         bytes32 _blockHash,
         bytes32 _memoHash,
         bytes calldata _vin,    // outpoint tx input vector
@@ -48,7 +48,7 @@ contract PoR is DataStructure {
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
         // solium-disable-next-line security/no-block-members
-        require(timestamp <= block.timestamp - COMMIT_TIMEOUT, "block too new");
+        require(!_minable(timestamp), "mining time not over");
         }
 
         Transaction storage winner = header.winner[_memoHash];
@@ -68,7 +68,7 @@ contract PoR is DataStructure {
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         address miner = miners[extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX))];
         require(miner != address(0x0), "unregistered PKH");
-        pay(_memoHash, miner, MAX_TARGET / header.target);
+        _reward(_memoHash, miner, MAX_TARGET / header.target);
         }
 
         delete header.winner[_memoHash];
@@ -85,21 +85,21 @@ contract PoR is DataStructure {
     /**
      * for PoR to pay for the miner
      */
-    function pay(
+    function _reward(
         bytes32 memoHash,
         address payee,
         uint rewardRate
     ) internal {
-        uint paid = takeReward(memoHash, rewardRate);
-        reward(payee, paid);    // reward the miner and upstream in the ref network
+        uint paid = _claimReward(memoHash, rewardRate);
+        _payReward(payee, paid);    // reward the miner and upstream in the ref network
         Brand storage brand = brands[memoHash];
-        emit Pay(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
+        emit Reward(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
     }
 
     /**
      * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
      */
-    function takeReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
+    function _claimReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
         Brand storage brand = brands[memoHash];
         address payer = brand.payer;
         if (payer == address(this)) {   // endur.io
@@ -134,7 +134,7 @@ contract PoR is DataStructure {
      *
      * Note: half of the reward is distributed to miner, the other half is for upstream commission.
      */
-    function reward(address miner, uint amount) internal {
+    function _payReward(address miner, uint amount) internal {
         Node storage node = nodes[miner];
         if (!node.exists()) {
             _attach(miner, ROOT_ADDRESS);
@@ -142,7 +142,7 @@ contract PoR is DataStructure {
         assert(node.exists());
         uint commission = amount >> 1;
         node.balance.inc(amount - commission); // safe
-        commitToUpstream(node, commission);
+        _payUpstream(node, commission);
         epochTotalReward = util.addCap(epochTotalReward, amount);
     }
 
@@ -174,7 +174,7 @@ contract PoR is DataStructure {
             // uint32 _locktime,      // tx locktime
             // uint32 _version,       // tx version
         bytes calldata _vin,    // tx input vector
-        bytes calldata _vout   // tx output vector
+        bytes calldata _vout    // tx output vector
     ) external {
         Header storage header = headers[_blockHash];
 
@@ -182,7 +182,7 @@ contract PoR is DataStructure {
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
         // solium-disable-next-line security/no-block-members
-        require(block.timestamp - COMMIT_TIMEOUT < timestamp, "block too old");
+        require(_minable(timestamp), "mining time over");
         }
 
         bytes32 txId = ValidateSPV.calculateTxId(
@@ -231,7 +231,7 @@ contract PoR is DataStructure {
         return uint32((packed >> shift) & 0xFFFFFFFF);
     }
 
-    /// TODO: create an incentive for only 1 miner to commit the block
+    /// TODO: create an incentive for only 1 miner to relay the block header
     function commitBlock(
         bytes calldata _header
     ) external {
@@ -244,11 +244,19 @@ contract PoR is DataStructure {
         // Require that the header has sufficient work
         require(uint(_blockHash).reverseUint256() <= target, "insufficient work");
 
-        // TODO: verify block timestamp > genesis timestamp
+        uint32 timestamp = _header.extractTimestamp();
+        require(_minable(timestamp), "block too old");
 
         header.merkleRoot = _header.extractMerkleRootLE().toBytes32();
-        header.timestamp = _header.extractTimestamp();
+        header.timestamp = timestamp;
         header.target = target;
+    }
+
+    /**
+     * testing whether the given timestamp is in the commit time
+     */
+    function _minable(uint timestamp) internal view returns (bool) {
+        return block.timestamp - MINING_TIME < timestamp;
     }
 
     function txRank(bytes32 blockHash, bytes32 txHash) internal pure returns (uint) {

@@ -72,7 +72,7 @@ contract RefNetwork is DataStructure {
         Node storage node = nodes[msg.sender];
         require(node.exists(), "no such node");
         require(rent != node.balance.getLeakingRate(), "unchanged rent");
-        _commit(msg.sender);
+        _pay(msg.sender);
         node.balance.setLeakingRate(rent);
     }
 
@@ -107,12 +107,13 @@ contract RefNetwork is DataStructure {
     }
 
     /**
-     * claim the accumulate commission, can be executed by anyone
+     * pay the commision for the nodes and leave the remain to upstream,
+     * Note: can be executed by anyone.
      */
      // solium-disable-next-line security/no-assign-params
-    function commitChain(address noder, uint depth) external {
+    function payChain(address noder, uint depth) external {
         for (uint i = 0; i < depth; ++i) {
-            noder = _commit(noder);
+            noder = _pay(noder);
             if (noder == ROOT_PARENT) {
                 return;
             }
@@ -120,16 +121,17 @@ contract RefNetwork is DataStructure {
     }
 
     /**
-     * claim the accumulate commission, can be executed by anyone
+     * pay the commision for the node and leave the remain to upstream
+     * Note: can be executed by anyone.
      */
-    function commit(address noder) external {
-        _commit(noder);
+    function pay(address noder) external {
+        _pay(noder);
     }
 
     /**
      * @return parent address, or ROOT_PARENT if there no more node nor commission
      */
-    function _commit(address noder) internal returns (address) {
+    function _pay(address noder) internal returns (address) {
         Node storage node = nodes[noder];
         uint commission = node.commission;
         if (commission == 0) {
@@ -151,7 +153,7 @@ contract RefNetwork is DataStructure {
         uint r = node.getEffectiveRent();
         if (r == 0) {
             // TBD: check flattening condition here?
-            return commitToUpstream(node, node.commission);
+            return _payUpstream(node, node.commission);
         }
         // globalLevelStep is a global params, adjust so that root node get approximately 1/32 of the token rewarded.
         uint S = globalLevelStep;
@@ -173,11 +175,11 @@ contract RefNetwork is DataStructure {
         if (remain == 0) {
             return ROOT_PARENT; // no more commission to process
         }
-        return commitToUpstream(node, remain);
+        return _payUpstream(node, remain);
     }
 
     /**
-     * @dev make sure this and _commit can never revert for root node
+     * @dev make sure this and _pay can never revert for root node
      */
     function adaptGlobalLevelStep(uint rootC) internal {
         uint S = globalLevelStep;

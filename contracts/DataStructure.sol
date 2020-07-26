@@ -57,7 +57,7 @@ contract DataStructure is ERC20 {
         uint            balance
     );
     event Deactive(bytes32 indexed memoHash);
-    event Pay(
+    event Reward(
         bytes32 indexed memoHash,
         bytes32         memo,       // the first 32 bytes of the memo
         address indexed payer,
@@ -88,7 +88,7 @@ contract DataStructure is ERC20 {
     /**
      * @dev shared for RefNet.commit and PoR.reward
      */
-    function commitToUpstream(Node storage node, uint commission) internal returns (address) {
+    function _payUpstream(Node storage node, uint commission) internal returns (address) {
         (address parent, uint96 mtime) = node.parent.extract();
         Node storage parentNode = nodes[parent];
         assert(parentNode.exists());

@@ -26,7 +26,7 @@ contract ENDR is DataStructure {
     constructor(
         // address implERC20,
         address implBrandMarket,
-        address implRefNet,
+        address implRefNetwork,
         address implPoR
     ) public {
         owner = msg.sender; // responsible for contract upgrade
@@ -45,28 +45,29 @@ contract ENDR is DataStructure {
         // impls[0x39509351] = implERC20;          // increaseAllowance
         // impls[0xa457c2d7] = implERC20;          // decreaseAllowance
 
-        // TODO: write a script to auto-generate this map
+        // generator script: change the contract name in export part
+        // (export CONTRACT=BrandMarket; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
         impls[0x231ab4bd] = implBrandMarket;    // register
         impls[0xbeba8022] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x8e19899e] = implBrandMarket;    // withdraw
         impls[0x1de26e16] = implBrandMarket;    // deposit
         impls[0xd954863c] = implBrandMarket;    // deposit
-        impls[0x59f78a47] = implPoR;            // mine
-        impls[0xa740a4ac] = implPoR;            // commitTx
-        impls[0xd02898cf] = implPoR;            // commitBlock
-        impls[0x495dd54b] = implPoR;            // registerMiner
-        impls[0x0aa0738f] = implPoR;            // changeMiner
-        impls[0x5ca1e165] = implRefNet;         // getRoot
-        impls[0x003ba1ed] = implRefNet;         // setRoot
-        impls[0x7a0ca1e2] = implRefNet;         // attach
-        impls[0xb6b55f25] = implRefNet;         // deposit
-        impls[0x2e1a7d4d] = implRefNet;         // withdraw
-        impls[0xb12a6852] = implRefNet;         // setRent
-        impls[0xe0719564] = implRefNet;         // getRent
-        impls[0x7dd55a78] = implRefNet;         // flatten
-        impls[0x75d3e9d4] = implRefNet;         // commitChain
-        impls[0x369e8c1d] = implRefNet;         // commit
+        impls[0xd3f1340e] = implPoR;    // claim
+        impls[0xa740a4ac] = implPoR;    // commitTx
+        impls[0xd02898cf] = implPoR;    // commitBlock
+        impls[0x495dd54b] = implPoR;    // registerMiner
+        impls[0x0aa0738f] = implPoR;    // changeMiner
+        impls[0x5ca1e165] = implRefNetwork;     // getRoot
+        impls[0x003ba1ed] = implRefNetwork;     // setRoot
+        impls[0x7a0ca1e2] = implRefNetwork;     // attach
+        impls[0xb6b55f25] = implRefNetwork;     // deposit
+        impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
+        impls[0xb12a6852] = implRefNetwork;     // setRent
+        impls[0xe0719564] = implRefNetwork;     // getRent
+        impls[0x7dd55a78] = implRefNetwork;     // flatten
+        impls[0xa8074c98] = implRefNetwork;     // payChain
+        impls[0x0c11dedd] = implRefNetwork;     // pay
     }
 
     /**
