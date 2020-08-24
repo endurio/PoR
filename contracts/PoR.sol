@@ -257,7 +257,7 @@ contract PoR is DataStructure {
      * testing whether the given timestamp is in the commit time
      */
     function _minable(uint timestamp) internal view returns (bool) {
-        return time.blockTimestamp() - MINING_TIME < timestamp;
+        return time.elapse(timestamp) < MINING_TIME;
     }
 
     function txRank(bytes32 blockHash, bytes32 txHash) internal pure returns (uint) {

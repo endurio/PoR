@@ -10,12 +10,12 @@ struct SUint192 {
 }
 
 /**
- * Scheduled Value - a value that can be scheduled to change after a delay.
+ * Scheduled Value - a value that can be scheduled to change next a delay.
  */
 library suint192 {
     function commited(SUint192 storage sv) internal view returns (uint192) {
         bytes32 scheduledData = sv.scheduledData;   // SLOAD
-        if (uint64(bytes8(scheduledData)) <= time.blockTimestamp()) {
+        if (time.reach(uint64(bytes8(scheduledData)))) {
             return uint192(uint256(scheduledData));
         }
         return sv.commitedValue;                    // SLOAD
@@ -26,17 +26,17 @@ library suint192 {
     }
 
     function isScheduling(SUint192 storage sv) internal view returns (bool) {
-        return time.blockTimestamp() < uint64(bytes8(sv.scheduledData));
+        return !time.reach(uint64(bytes8(sv.scheduledData)));
     }
 
-    // @unsafe: (time.blockTimestamp() + delay) can overflow uint64
+    // @unsafe: (block.timestamp + delay) can overflow uint64
     function schedule(SUint192 storage sv, uint192 value, uint delay) internal {
         bytes32 scheduledData = sv.scheduledData;                           // SLOAD
-        if (uint64(bytes8(scheduledData)) <= time.blockTimestamp()) {
+        if (time.reach(uint64(bytes8(scheduledData)))) {
             // commit the scheduled value that reached scheduled time
             sv.commitedValue = uint192(uint256(scheduledData));             // SSTORE
         }
-        uint64 scheduledTime = uint64(time.blockTimestamp() + delay);
+        uint64 scheduledTime = uint64(time.next(delay));
         sv.scheduledData = bytes32(uint(value) | (scheduledTime << 192));   // SSTORE
     }
 

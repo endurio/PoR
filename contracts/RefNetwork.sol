@@ -35,7 +35,7 @@ contract RefNetwork is DataStructure {
         // init the root node at ROOT_ADDRESS, with parrent at ROOT_PARENT
         nodes[ROOT_ADDRESS].parent.forceTo(ROOT_PARENT, 0);
         // init the end of the first epoch
-        epochEnd = time.blockTimestamp() + EPOCH;
+        epochEnd = time.next(EPOCH);
     }
 
     function getRoot() external view returns (address) {
@@ -143,7 +143,7 @@ contract RefNetwork is DataStructure {
             node.balance.rawInc(commission);
             uint rootC = util.addCap(epochTotalRootC, commission);
             // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
-            if (epochEnd <= time.blockTimestamp()) {
+            if (time.reach(epochEnd)) {
                 adaptGlobalLevelStep(rootC);
             } else {
                 epochTotalRootC = rootC;
@@ -191,7 +191,7 @@ contract RefNetwork is DataStructure {
         }
         globalLevelStep = Math.average(S, targetS);
         // reset the end of the next epoch
-        epochEnd = time.blockTimestamp() + EPOCH;
+        epochEnd = time.next(EPOCH);
         delete epochTotalRootC;
         delete epochTotalReward;
     }

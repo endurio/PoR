@@ -94,7 +94,7 @@ contract DataStructure is ERC20 {
         Node storage parentNode = nodes[parent];
         assert(parentNode.exists());
 
-        if (mtime <= time.blockTimestamp()) { // matured
+        if (time.reach(mtime)) { // matured
             parentNode.incCommissionCapped(commission);
             return parent;
         }

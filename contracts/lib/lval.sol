@@ -19,7 +19,7 @@ library lval {
      * peek the current value without modify the storage
      */
     function peek(LUint storage lv) internal view returns (uint) {
-        // assert: lastTouch <= time.blockTimestamp()
+        // assert: time.reach(lastTouch)
         uint value = lv.value;
         if (value == 0) {
             return 0;
@@ -28,7 +28,7 @@ library lval {
         if (rate == 0) {
             return value;
         }
-        uint elapsed = time.blockTimestamp() - lv.lastTouch;
+        uint elapsed = time.elapse(lv.lastTouch);
         // if (elapsed == 0) {
         //     return value;
         // }

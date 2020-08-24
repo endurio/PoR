@@ -28,7 +28,7 @@ library tadr {
      * Split the logic of extract and maturingRate out for optimization.
      *
      * (address a, uint96 mtime) = ta.extract();
-     * if (time.blockTimestamp() < mtime) { // unmatured
+     * if (block.timestamp < mtime) { // unmatured
      *    (uint dividend, uint divisor, address pA) = ta.maturingRate(mtime);
      *    // handle maturing address here
      * } else {
@@ -42,7 +42,7 @@ library tadr {
 
     /**
      * Split the logic of extract and maturingRate out for optimization.
-     * This function is only called when time.blockTimestamp() < currentMTime (a.k.a unmatured)
+     * This function is only called when block.timestamp < currentMTime (a.k.a unmatured)
      */
     function maturingRate(TAddress storage ta, uint currentMTime)
         internal view
@@ -51,7 +51,7 @@ library tadr {
         bytes32 prev = ta.previous;
         uint prevMTime = uint96(uint(prev));
         divisor = (currentMTime - prevMTime) / 2;
-        dividend = divisor - (currentMTime - time.blockTimestamp());
+        dividend = divisor - time.remain(currentMTime);
         prevAddress = address(bytes20(prev));
     }
 
@@ -64,7 +64,7 @@ library tadr {
         }
         // address currentValue = address(bytes20(current));
         uint currentMTime = uint96(uint(current));
-        if (time.blockTimestamp() < currentMTime) { // not matured
+        if (!time.reach(currentMTime)) { // not matured
             bytes32 prev = ta.previous;
             // address previousValue = address(bytes20(previous));
             currentMTime = uint96(uint(prev)); // use the prevMTime as currentMTime
@@ -73,7 +73,8 @@ library tadr {
             ta.previous = current;
         }
         // calculate the future matured time for the new value
-        currentMTime = (time.blockTimestamp() - currentMTime) + time.blockTimestamp();
+        uint elapsed = time.elapse(currentMTime);
+        currentMTime = time.next(elapsed);
         // incomming paranoid check
         if (currentMTime > MAX_UINT96 || currentMTime < time.blockTimestamp()) { // overflown
             currentMTime = MAX_UINT96; // cap the result
