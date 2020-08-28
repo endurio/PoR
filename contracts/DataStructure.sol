@@ -149,7 +149,6 @@ library libnode {
 
 struct Header {
     bytes32 merkleRoot;
-    uint target;
     uint32  timestamp;
 
     // PoR data

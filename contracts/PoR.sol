@@ -17,7 +17,7 @@ import "./lib/time.sol";
 contract PoR is DataStructure {
     uint constant MINING_TIME = 1 hours;
 
-    uint constant MAX_TARGET = 0x0000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    uint constant MAX_TARGET = 1<<240;
 
     // extra param bit posistion (from the right)
     uint constant EXTRA_VERSION     = 0;
@@ -69,7 +69,7 @@ contract PoR is DataStructure {
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         address miner = miners[extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX))];
         require(miner != address(0x0), "unregistered PKH");
-        _reward(_memoHash, miner, MAX_TARGET / header.target);
+        _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash).reverseUint256());
         }
 
         delete header.winner[_memoHash];
@@ -204,7 +204,7 @@ contract PoR is DataStructure {
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
             uint newRank = txRank(_blockHash, txId);
-            require(newRank < oldRank, "not better than commited tx");
+            require(newRank < oldRank, "better tx commited");
         } else {
             header.minable++; // increase the ref count for new brand
         }
@@ -250,7 +250,6 @@ contract PoR is DataStructure {
 
         header.merkleRoot = _header.extractMerkleRootLE().toBytes32();
         header.timestamp = timestamp;
-        header.target = target;
     }
 
     /**
