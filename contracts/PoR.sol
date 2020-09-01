@@ -107,7 +107,7 @@ contract PoR is DataStructure {
             _mint(address(this), rewardRate);
             return rewardRate;
         }
-        uint payRate = brand.payRate.commited();
+        uint payRate = brand.payRate.committed();
         require(payRate > 0, "brand not active");
         uint amount = util.mulCap(payRate, rewardRate) / 1e18;
         uint balance = brand.balance;
@@ -142,7 +142,7 @@ contract PoR is DataStructure {
         }
         assert(node.exists());
         uint commission = amount >> 1;
-        node.balance.inc(amount - commission); // safe
+        node.balance.add(amount - commission); // safe
         _payUpstream(node, commission);
         epochTotalReward = util.addCap(epochTotalReward, amount);
     }
@@ -204,7 +204,7 @@ contract PoR is DataStructure {
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
             uint newRank = txRank(_blockHash, txId);
-            require(newRank < oldRank, "better tx commited");
+            require(newRank < oldRank, "better tx committed");
         } else {
             header.minable++; // increase the ref count for new brand
         }

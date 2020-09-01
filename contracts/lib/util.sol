@@ -39,6 +39,14 @@ library util {
         return (a < b && b < c) || (a > b && b > c);
     }
 
+    function max(uint192 a, uint192 b) internal pure returns (uint192) {
+        return a >= b ? a : b;
+    }
+
+    function min(uint192 a, uint192 b) internal pure returns (uint192) {
+        return a <= b ? a : b;
+    }
+
     /**
      * @dev assert(a <= b)
      * @return x * b / c (precision can be lower if (x*b) overflown)

@@ -45,7 +45,7 @@ contract BrandMarket is DataStructure {
         } else {
             require(msg.sender != payer, "re-register not allowed");
             // brand can be overtaken when (1) brand is inactive or (2) new pay rate is better
-            require(payRate > brand.payRate.commited(), "pay rate too low for overtaking");
+            require(payRate > brand.payRate.max(), "pay rate too low for overtaking");
             _transfer(address(this), payer, brand.balance); // refund the old payer
         }
         _transfer(msg.sender, address(this), amount);
@@ -81,22 +81,17 @@ contract BrandMarket is DataStructure {
     }
 
     /**
-     * Increasing the pay rate take effect immediately,
-     * reducing the payrate requires a delay of 40 mins
+     * Changing the payrate requires a delay of 40 mins.
      */
     function _setPayRate(Brand storage brand, uint192 payRate) internal {
-        if (payRate >= brand.payRate.commited()) {
-            brand.payRate.commit(payRate);
-        } else {
-            brand.payRate.schedule(payRate, PAYRATE_DELAY);
-        }
+        brand.payRate.schedule(payRate, PAYRATE_DELAY);
     }
 
     function withdraw(bytes32 memoHash) external {
         Brand storage brand = brands[memoHash];
         address payer = brand.payer;
         require(msg.sender == payer, "current payer only");
-        require(brand.payRate.commited() == 0, "brand not deactivated");
+        require(brand.payRate.committed() == 0, "brand not deactivated");
         uint balance = brand.balance;
         require(balance > 0, "empty balance");
         _transfer(address(this), payer, balance);
