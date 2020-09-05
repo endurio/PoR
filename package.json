@@ -4,7 +4,7 @@
   "description": "Endurio Proof of Reference",
   "scripts": {
     "compile": "truffle compile",
-    "deploy": "truffle migrate --reset --network ${NODE_ENV:-ganache}",
+    "deploy": "truffle migrate --reset --network ${NODE_ENV:-local}",
     "parser": "babel-eslint",
     "pretest": "eslint --ignore-path .gitignore .",
     "lint": "eslint ./**.js **.js",
