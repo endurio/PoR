@@ -4,9 +4,8 @@ pragma solidity ^0.6.2;
 /** @author Summa (https://summa.one) */
 
 import {BytesLib} from "./BytesLib.sol";
-import {SafeMath} from "./SafeMath.sol";
 import {BTCUtils} from "./BTCUtils.sol";
-
+import "@openzeppelin/contracts/math/SafeMath.sol";
 
 library ValidateSPV {
 

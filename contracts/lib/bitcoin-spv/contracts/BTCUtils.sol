@@ -4,7 +4,7 @@ pragma solidity ^0.6.2;
 /** @author Summa (https://summa.one) */
 
 import {BytesLib} from "./BytesLib.sol";
-import {SafeMath} from "./SafeMath.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 
 library BTCUtils {
     using BytesLib for bytes;

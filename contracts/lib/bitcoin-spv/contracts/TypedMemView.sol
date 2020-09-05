@@ -1,6 +1,6 @@
 pragma solidity ^0.6.2;
 
-import {SafeMath} from "./SafeMath.sol";
+import "@openzeppelin/contracts/math/SafeMath.sol";
 
 library TypedMemView {
     using SafeMath for uint256;
