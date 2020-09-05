@@ -1,0 +1,26 @@
+{
+  "name": "por",
+  "version": "1.0.0",
+  "description": "Endurio Proof of Reference",
+  "scripts": {
+    "compile": "truffle compile",
+    "deploy": "truffle migrate --reset --network ${NODE_ENV:-ganache}",
+    "parser": "babel-eslint",
+    "pretest": "eslint --ignore-path .gitignore .",
+    "lint": "eslint ./**.js **.js",
+    "travislint": "eslint --ignore-path .gitignore .",
+    "lint:fix": "eslint . --fix",
+    "lint:sol": "solium -d contracts/"
+  },
+  "author": "endur.io",
+  "dependencies": {
+    "truffle": "^5.1.31",
+    "tslint": "^5.11.0",
+    "web3": "1.0.0-beta.36"
+  },
+  "devDependencies": {},
+  "private": true,
+  "main": "index.js",
+  "repository": "git@github.com:endurio/PoR.git",
+  "license": "MIT"
+}
