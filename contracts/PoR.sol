@@ -27,6 +27,7 @@ contract PoR is DataStructure {
     uint constant EXTRA_INPUT_IDX   = 32*3;
     uint constant EXTRA_MEMO_LENGTH = 32*4;
     // uint constant EXTRA_MINER_POS = 32*5;
+    uint constant EXTRA_MERKLE_IDX  = 32*7;
 
     using BTCUtils for bytes;
     using BTCUtils for uint256;
@@ -38,11 +39,11 @@ contract PoR is DataStructure {
         bytes32 _memoHash,
         bytes calldata _vin,    // outpoint tx input vector
         bytes calldata _vout,   // outpoint tx output vector
-        uint _extra
-            // uint32 _pkhIdx,      // (optional) position of miner PKH in the outpoint raw data
+        bytes32 _extra
+            // uint32 EXTRA_PKH_IDX,    // (optional) position of miner PKH in the outpoint raw data
                                     // (including the first 8-bytes amount for optimization)
-            // uint32 _locktime,    // tx locktime
-            // uint32 _version,     // tx version
+            // uint32 EXTRA_LOCKTIME,   // tx locktime
+            // uint32 EXTRA_VERSION,    // tx version
     ) external {
         Header storage header = headers[_blockHash];
         { // stack too deep
@@ -162,18 +163,20 @@ contract PoR is DataStructure {
         return pkh.toBytes20();
     }
 
-    /// @param _merkleProof     The proof's intermediate nodes (digests between leaf and root)
-    /// @param _merkleIndex     The leaf's index in the tree (0-indexed)
+    /// @param _merkleProof The proof's intermediate nodes (digests between leaf and root)
+    /// @param _extra       All the following params packed in a single bytes32
+    ///     uint32 EXTRA_MERKLE_IDX  // the merkle leaf's index in the tree (0-indexed)
+    ///     uint32
+    ///     uint32
+    ///     uint32 EXTRA_MEMO_LENGTH
+    ///     uint32 EXTRA_INPUT_IDX   // index of input which its outpoint locking script contains the miner PKH
+    ///     uint32 EXTRA_OUTPUT_IDX  // index of OP_RET output
+    ///     uint32 EXTRA_LOCKTIME    // tx locktime, little endian
+    ///     uint32 EXTRA_VERSION     // tx version, little endian
     function commitTx(
         bytes32 _blockHash,
         bytes calldata _merkleProof,
-        uint _merkleIndex,
-        uint _extra,
-            // uint32 _memoLength
-            // uint32 _inputIndex     // index of input which its outpoint locking script contains the miner PKH
-            // uint32 _outputIndex,
-            // uint32 _locktime,      // tx locktime
-            // uint32 _version,       // tx version
+        bytes32 _extra,
         bytes calldata _vin,    // tx input vector
         bytes calldata _vout    // tx output vector
     ) external {
@@ -191,7 +194,8 @@ contract PoR is DataStructure {
             _vin,
             _vout,
             extractUint32(_extra, EXTRA_LOCKTIME));
-        require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, _merkleIndex), "invalid merkle proof");
+
+        require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, extractUint32(_extra, EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
         // extract the brand from OP_RETURN
         Transaction storage winner = getWinner(
@@ -228,8 +232,8 @@ contract PoR is DataStructure {
         return header.winner[memoHash];
     }
 
-    function extractUint32(uint packed, uint shift) internal pure returns (uint32) {
-        return uint32((packed >> shift) & 0xFFFFFFFF);
+    function extractUint32(bytes32 packed, uint shift) internal pure returns (uint32) {
+        return uint32((uint(packed) >> shift) & 0xFFFFFFFF);
     }
 
     /// TODO: create an incentive for only 1 miner to relay the block header
