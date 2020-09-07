@@ -84,6 +84,16 @@ library util {
         return MAX_UINT256;
     }
 
+    // capped subtraction
+    // if the calculation is overflown, return the max or min value of the type
+    function subCap(uint a, uint b) internal pure returns (uint) {
+        if (a <= b) {
+            // subtraction overflow
+            return 0;
+        }
+        return a - b;
+    }
+
     // capped multiply
     // if the calculation is overflown, return the max or min value of the type
     function mulCap(int a, int b) internal pure returns (int) {
