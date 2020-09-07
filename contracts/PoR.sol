@@ -208,7 +208,8 @@ contract PoR is DataStructure {
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
             uint newRank = txRank(_blockHash, txId);
-            require(newRank < oldRank, "better tx committed");
+            // accept the same rank here to allow re-commiting the same tx to change the input index
+            require(newRank <= oldRank, "better tx committed");
         } else {
             header.minable++; // increase the ref count for new brand
         }
