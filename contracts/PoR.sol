@@ -236,14 +236,14 @@ contract PoR is DataStructure {
     function commitBlock(
         bytes calldata _header
     ) external {
-        bytes32 _blockHash = _header.hash256();
-        Header storage header = headers[_blockHash];
+        uint _blockHash = uint(_header.hash256()).reverseUint256(); // always use BE for block hash
+        Header storage header = headers[bytes32(_blockHash)];
         require(header.merkleRoot == 0, "block committed");
 
         // header can be of any size
         uint target = _header.extractTarget();
         // Require that the header has sufficient work
-        require(uint(_blockHash).reverseUint256() <= target, "insufficient work");
+        require(_blockHash <= target, "insufficient work");
 
         uint32 timestamp = _header.extractTimestamp();
         require(_minable(timestamp), "block too old");
