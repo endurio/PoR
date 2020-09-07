@@ -41,7 +41,7 @@ contract PoR is DataStructure {
         bytes calldata _vout,   // outpoint tx output vector
         bytes32 _extra
             // uint32 EXTRA_PKH_IDX,    // (optional) position of miner PKH in the outpoint raw data
-                                    // (including the first 8-bytes amount for optimization)
+                                        // (including the first 8-bytes amount for optimization)
             // uint32 EXTRA_LOCKTIME,   // tx locktime
             // uint32 EXTRA_VERSION,    // tx version
     ) external {
@@ -185,7 +185,6 @@ contract PoR is DataStructure {
         { // stack too deep
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
-        // solium-disable-next-line security/no-block-members
         require(_minable(timestamp), "mining time over");
         }
 
@@ -255,6 +254,7 @@ contract PoR is DataStructure {
 
         header.merkleRoot = _header.extractMerkleRootLE().toBytes32();
         header.timestamp = timestamp;
+        // TODO: emit Block(bytes32(_blockHash))
     }
 
     /**
