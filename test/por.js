@@ -102,9 +102,6 @@ contract("PoR", accounts => {
         const txHash = commitTxs[0];
         const txMeta = txs[txHash];
         await expectRevert(claim(txMeta, 0), "revert mining time not over");
-        const block = bitcoinjs.Block.fromHex(blocks[txMeta.block]);
-        time.increaseTo(block.timestamp + 60*60-1);
-        await expectRevert(claim(txMeta, 0), "revert mining time not over");
       }
 
       for (const txHash of commitTxs) {
