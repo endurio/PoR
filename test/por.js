@@ -14,6 +14,8 @@ let instPoR;
 
 const memo = 'endur.io';
 const memoHash = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
+const PubKey = '8a18217dd2badc2a6ea76c3e49b780bcb2b0231b69e13ef0970754d4b30b7e5505bf1dea6ad781af6d6467696b8c185ccdd4734d157e11905223afd8fc969590'
+const PKH = 'e5f04c3aa21d728975dcadc1ca9a251b9642e866'
 
 contract("PoR", accounts => {
   before('should chain time be in the past', async () => {
@@ -87,9 +89,17 @@ contract("PoR", accounts => {
       }
     })
 
-    it("registerPKH", async() => {
-      const pubKey = '8a18217dd2badc2a6ea76c3e49b780bcb2b0231b69e13ef0970754d4b30b7e5505bf1dea6ad781af6d6467696b8c185ccdd4734d157e11905223afd8fc969590'
-      await instPoR.registerMiner('0x'+pubKey, '0x0000000000000000000000000000000000000000');
+    it("registerMiner", async() => {
+      await expectRevert(
+        instPoR.registerMiner('0x'+PubKey, '0x0123456789012345678901234567890123456789'),
+        "only pkh owner can change the beneficient address");
+      await instPoR.registerMiner('0x'+PubKey, '0x0000000000000000000000000000000000000000');
+    })
+
+    it("changeMiner", async() => {
+      await expectRevert(
+        instPoR.changeMiner('0x'+PKH, '0x0123456789012345678901234567890123456789'),
+        "only for old owner");
     })
 
     it("claim", async() => {
