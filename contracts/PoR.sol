@@ -68,7 +68,8 @@ contract PoR is DataStructure {
 
         { // stack too deep
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
-        address miner = miners[extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX))];
+        bytes20 pkh = extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX));
+        address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
         _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash).reverseUint256());
         }
@@ -269,7 +270,7 @@ contract PoR is DataStructure {
     }
 
     function registerMiner(
-        bytes calldata _pubkey,
+        bytes calldata _pubkey, // uncompressed, unprefixed 64-bytes pubic key
         address _beneficient    // (optional) rewarding address
     ) external {
         address adr = CheckBitcoinSigs.accountFromPubkey(_pubkey);
@@ -290,8 +291,10 @@ contract PoR is DataStructure {
     }
 
     function getPKH(
-        bytes memory _pubkey
+        bytes memory _pubkey    // uncompressed, unprefixed 64-bytes pubic key
     ) internal pure returns (bytes20 pkh) {
-        return ripemd160(abi.encodePacked(sha256(_pubkey)));
+        uint8 _prefix = uint8(_pubkey[_pubkey.length - 1]) % 2 == 1 ? 3 : 2;
+        bytes memory compressedPubkey = abi.encodePacked(_prefix, _pubkey.slice(0, 32));
+        return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
     }
 }
