@@ -49,7 +49,6 @@ contract PoR is DataStructure {
         { // stack too deep
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
-        // solium-disable-next-line security/no-block-members
         require(!_minable(timestamp), "mining time not over");
         }
 
@@ -62,7 +61,6 @@ contract PoR is DataStructure {
             _vin,
             _vout,
             extractUint32(_extra, EXTRA_LOCKTIME));
-        // TODO: endianness
         require(winner.outpointTxLE == txId, "outpoint tx mismatch");
         }
 
