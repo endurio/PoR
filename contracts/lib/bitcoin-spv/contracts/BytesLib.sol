@@ -421,16 +421,6 @@ library BytesLib {
         }
     }
 
-    function toBytes20(bytes memory _source) pure internal returns (bytes20 result) {
-        if (_source.length == 0) {
-            return 0x0;
-        }
-
-        assembly {
-            result := mload(add(_source, 20))
-        }
-    }
-
     function keccak256Slice(bytes memory _bytes, uint _start, uint _length) pure internal returns (bytes32 result) {
         uint _end = _start + _length;
         require(_end > _start && _bytes.length >= _end, "Slice out of bounds");

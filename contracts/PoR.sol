@@ -155,12 +155,12 @@ contract PoR is DataStructure {
         // the first 8 bytes is ussually for amount, so zero index makes no sense here
         if (_pkhIdx > 0) {
             // pkh location is provided for saving gas
-            return _output.slice(_pkhIdx, 20).toBytes20();
+            return bytes20(_output.slice(_pkhIdx, 20).toBytes32());
         }
         // standard outpoint types: p2pkh, p2wpkh
         bytes memory pkh = _output.extractHash();
         require(pkh.length == 20, "unsupported PKH in outpoint");
-        return pkh.toBytes20();
+        return bytes20(pkh.toBytes32());
     }
 
     /// @param _merkleProof The proof's intermediate nodes (digests between leaf and root)
