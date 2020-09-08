@@ -6,7 +6,9 @@ const hash256 = require('./vendor/hash256');
 const merkle = require('./vendor/merkle');
 const { blocks, txs } = require('./data/por');
 
+const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
+let inst;
 let instPoR;
 
 contract("PoR", accounts => {
@@ -25,8 +27,11 @@ contract("PoR", accounts => {
   });
 
   before('should our contracts be deployed', async () => {
-    instPoR = await PoR.deployed()
-    expect(instPoR, 'contract not deployed: PoR').to.not.be.null
+    inst = await ENDR.deployed();
+    expect(inst, 'contract not deployed: ENDR').to.not.be.null
+    expect(await PoR.deployed(), 'contract not deployed: PoR').to.not.be.null
+    // proxy implementations
+    instPoR = await PoR.at(inst.address)
   });
 
   describe('mine', () => {

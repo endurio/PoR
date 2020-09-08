@@ -70,12 +70,12 @@ contract ENDR is DataStructure {
     }
 
     function mustDelegateCall(address impl, bytes memory data) internal {
-        (bool ok, bytes memory res) = impl.delegatecall(data);
+        (bool ok,) = impl.delegatecall(data);
         if (!ok) {
             assembly {
                 let size := returndatasize()
                 returndatacopy(0, 0, size)
-                revert(0, returndatasize())
+                revert(0, size)
             }
         }
     }
