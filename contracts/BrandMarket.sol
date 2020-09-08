@@ -7,22 +7,24 @@ import "./lib/util.sol";
 import "./lib/suint192.sol";
 import "./DataStructure.sol";
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
+import "./interface/Initializable.sol";
 
 /**
  * Market for brands to bid for miner.
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract BrandMarket is DataStructure {
+contract BrandMarket is DataStructure, Initializable {
     using suint192 for SUint192;
     using BytesLib for bytes;
 
     bytes   constant ENDURIO_MEMO               = "endur.io";
     uint192 constant ENDURIO_PAYRATE            = 1e18;
 
-    constructor() public {
+    function initialize() external override {
         Brand storage brand = brands[keccak256(ENDURIO_MEMO)];
-        brand.payer = address(this);
+        require(brand.payer == address(0x0), "already initialized");
+        brand.payer = address(this);            // TODO: (this) in delegated call?
         brand.payRate.commit(ENDURIO_PAYRATE);
         brand.memo = ENDURIO_MEMO;
     }

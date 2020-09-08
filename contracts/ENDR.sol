@@ -3,11 +3,6 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-inline-assembly
 
-import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
-import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
-import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
-import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
-import "./lib/util.sol";
 import "./DataStructure.sol";
 
 /**
@@ -30,6 +25,10 @@ contract ENDR is DataStructure {
         address implPoR
     ) public {
         owner = msg.sender; // responsible for contract upgrade
+
+        // delegate call initialize() for each implementations
+        mustDelegateCall(implBrandMarket, hex"8129fc1c");
+        mustDelegateCall(implRefNetwork, hex"8129fc1c");
 
         // All ERC20 functions are not upgradable
         // impls[0xbe45fd62] = implERC20;          // ENDR.transfer
@@ -68,6 +67,17 @@ contract ENDR is DataStructure {
         impls[0x7dd55a78] = implRefNetwork;     // flatten
         impls[0xa8074c98] = implRefNetwork;     // payChain
         impls[0x0c11dedd] = implRefNetwork;     // pay
+    }
+
+    function mustDelegateCall(address impl, bytes memory data) internal {
+        (bool ok, bytes memory res) = impl.delegatecall(data);
+        if (!ok) {
+            assembly {
+                let size := returndatasize()
+                returndatacopy(0, 0, size)
+                revert(0, returndatasize())
+            }
+        }
     }
 
     /**

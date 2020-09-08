@@ -10,13 +10,14 @@ import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 import "./lib/time.sol";
+import "./interface/Initializable.sol";
 
 /**
  * Referral Network
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract RefNetwork is DataStructure {
+contract RefNetwork is DataStructure, Initializable {
     uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192) - 1;
 
@@ -30,7 +31,8 @@ contract RefNetwork is DataStructure {
 
     uint constant EPOCH = 1 weeks;
 
-    constructor() public {
+    function initialize() public override {
+        require(root == address(0x0), "already initialized");
         root = msg.sender;
         // init the root node at ROOT_ADDRESS, with parrent at ROOT_PARENT
         nodes[ROOT_ADDRESS].parent.forceTo(ROOT_PARENT, 0);
