@@ -4,6 +4,7 @@ const { expect } = require('chai');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
 const hash256 = require('./vendor/hash256');
 const merkle = require('./vendor/merkle');
+const snapshot = require('./lib/snapshot');
 const { blocks, txs } = require('./data/por');
 
 const ENDR = artifacts.require("ENDR");
@@ -110,10 +111,14 @@ contract("PoR", accounts => {
         const txMeta = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txMeta.block]);
         time.increaseTo(block.timestamp + 60*60);
+        await expectRevert(claim(txMeta, 1, 11), "unregistered PKH");
+        const ss = await snapshot.take();
         await claim(txMeta, 1);
+        await snapshot.revert(ss);
+        await claim(txMeta, 1, 12);
       }
 
-      function claim(txMeta, inputIdx) {
+      function claim(txMeta, inputIdx, pkhPos) {
         const tx = bitcoinjs.Transaction.fromHex(txMeta.hex);
         const dxHash = tx.ins[inputIdx].hash.reverse().toString('hex');
 
@@ -121,9 +126,13 @@ contract("PoR", accounts => {
         const dxMeta = txs[dxHash];
         const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
 
-        let extra =
+        extra =
           pad(reverseUint32(locktime).toString(16), 8) +
           pad(reverseUint32(version).toString(16), 8);
+
+        if (pkhPos) {
+          extra = pad(pkhPos.toString(16), 8) + extra
+        }
         extra = pad(extra, 64);
 
         return instPoR.claim('0x'+txMeta.block, '0x'+memoHash, '0x'+vin, '0x'+vout, '0x'+extra);
