@@ -1,7 +1,7 @@
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
-const { time, expectRevert, BN } = require('@openzeppelin/test-helpers');
+const { time, expectRevert } = require('@openzeppelin/test-helpers');
 const hash256 = require('./vendor/hash256');
 const merkle = require('./vendor/merkle');
 const { blocks, txs } = require('./data/por');
@@ -10,6 +10,9 @@ const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
 let inst;
 let instPoR;
+
+const memo = 'endur.io';
+const memoHash = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
 
 contract("PoR", accounts => {
   before('should chain time be in the past', async () => {
@@ -42,8 +45,8 @@ contract("PoR", accounts => {
       ]
       for (const hash of commitBlocks) {
         const header = blocks[hash].substring(0, 160)
-        await instPoR.commitBlock('0x' + header)
-        await expectRevert(instPoR.commitBlock('0x' + header), 'block committed')
+        await instPoR.commitBlock('0x'+header)
+        await expectRevert(instPoR.commitBlock('0x'+header), 'block committed')
       }
     })
 
@@ -60,7 +63,7 @@ contract("PoR", accounts => {
         const tx = bitcoinjs.Transaction.fromHex(txMeta.hex);
         const [version, vin, vout, locktime] = extractTxParams(txMeta.hex, tx);
 
-        const outIdx = findMemoOutputIndex(tx.outs, 'endur.io');
+        const outIdx = findMemoOutputIndex(tx.outs, memo);
         expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
 
         let extra =
@@ -73,13 +76,57 @@ contract("PoR", accounts => {
           pad(reverseUint32(locktime).toString(16), 8) +
           pad(reverseUint32(version).toString(16), 8);
 
-        await instPoR.commitTx('0x' + txMeta.block, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout);
+        await instPoR.commitTx('0x'+txMeta.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
 
         extra = extra.slice(0, 32) +
           pad((1).toString(16), 8) +  // change the miner input index
           extra.slice(40);
 
-        await instPoR.commitTx('0x' + txMeta.block, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout);
+        await instPoR.commitTx('0x'+txMeta.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+      }
+    })
+
+    it("registerPKH", async() => {
+      const pubKey = '8a18217dd2badc2a6ea76c3e49b780bcb2b0231b69e13ef0970754d4b30b7e5505bf1dea6ad781af6d6467696b8c185ccdd4734d157e11905223afd8fc969590'
+      await instPoR.registerMiner('0x'+pubKey, '0x0000000000000000000000000000000000000000');
+    })
+
+    it("claim", async() => {
+      const commitTxs = [
+        '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
+        'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
+      ]
+
+      { // scope in
+        const txHash = commitTxs[0];
+        const txMeta = txs[txHash];
+        await expectRevert(claim(txMeta, 0), "revert mining time not over");
+        const block = bitcoinjs.Block.fromHex(blocks[txMeta.block]);
+        time.increaseTo(block.timestamp + 60*60-1);
+        await expectRevert(claim(txMeta, 0), "revert mining time not over");
+      }
+
+      for (const txHash of commitTxs) {
+        const txMeta = txs[txHash];
+        const block = bitcoinjs.Block.fromHex(blocks[txMeta.block]);
+        time.increaseTo(block.timestamp + 60*60);
+        await claim(txMeta, 1);
+      }
+
+      function claim(txMeta, inputIdx) {
+        const tx = bitcoinjs.Transaction.fromHex(txMeta.hex);
+        const dxHash = tx.ins[inputIdx].hash.reverse().toString('hex');
+
+        // dependency tx
+        const dxMeta = txs[dxHash];
+        const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
+
+        let extra =
+          pad(reverseUint32(locktime).toString(16), 8) +
+          pad(reverseUint32(version).toString(16), 8);
+        extra = pad(extra, 64);
+
+        return instPoR.claim('0x'+txMeta.block, '0x'+memoHash, '0x'+vin, '0x'+vout, '0x'+extra);
       }
     })
   })
