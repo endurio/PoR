@@ -34,7 +34,7 @@ contract PoR is DataStructure {
     // using SafeMath for uint256;
 
     function claim(
-        bytes32 _blockHash,
+        bytes32 _blockHash,     // big-endian
         bytes32 _memoHash,
         bytes calldata _vin,    // outpoint tx input vector
         bytes calldata _vout,   // outpoint tx output vector
@@ -69,7 +69,7 @@ contract PoR is DataStructure {
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
         address miner = miners[extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX))];
         require(miner != address(0x0), "unregistered PKH");
-        _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash).reverseUint256());
+        _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash));
         }
 
         delete header.winner[_memoHash];
