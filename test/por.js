@@ -1,7 +1,7 @@
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
-const { time, expectRevert } = require('@openzeppelin/test-helpers');
+const { time, expectRevert, expectEvent } = require('@openzeppelin/test-helpers');
 const hash256 = require('./vendor/hash256');
 const merkle = require('./vendor/merkle');
 const snapshot = require('./lib/snapshot');
@@ -12,8 +12,11 @@ const PoR = artifacts.require("PoR");
 let inst;
 let instPoR;
 
-const memo = 'endur.io';
-const memoHash = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
+const ENDURIO = 'endur.io';
+const ENDURIO_HEX = '656e6475722e696f000000000000000000000000000000000000000000000000';
+const ENDURIO_HASH = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 contract("PoR", accounts => {
   before('should chain time be in the past', async () => {
@@ -66,7 +69,7 @@ contract("PoR", accounts => {
         const tx = bitcoinjs.Transaction.fromHex(txData.hex);
         const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
 
-        const outIdx = findMemoOutputIndex(tx.outs, memo);
+        const outIdx = findMemoOutputIndex(tx.outs, ENDURIO);
         expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
 
         let extra =
@@ -96,7 +99,7 @@ contract("PoR", accounts => {
         await expectRevert(
           instPoR.registerMiner('0x'+key.public, '0x0123456789012345678901234567890123456789'),
           "only pkh owner can change the beneficient address");
-        await instPoR.registerMiner('0x'+key.public, '0x0000000000000000000000000000000000000000');
+        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS);
       }
     })
 
@@ -125,19 +128,41 @@ contract("PoR", accounts => {
         const txData = txs[txHash];
 
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+
+        const MAX_TARGET = 1n<<240n;
+        const expectedReward = MAX_TARGET / BigInt('0x'+txData.block);
+
         await time.increaseTo(block.timestamp + 60*60);
 
         // PKH never be in the start of the output script
         await expectRevert(claim(txData, 0, 10), "unregistered PKH");
 
-        // auto detect PKH position
         const ss = await snapshot.take();
-        await claim(txData, 0);
+
+        // auto detect PKH position
+        expectEventClaim(await claim(txData, 0));
 
         await snapshot.revert(ss);
+
         // PKH position in output script is different between segwit and legacy
         const isSegWit = txData.hex.slice(8, 10) === '00';
-        await claim(txData, 0, isSegWit ? 11 : 12);
+        expectEventClaim(await claim(txData, 0, isSegWit ? 11 : 12));
+
+        function expectEventClaim(receipt) {
+          expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
+          expectEvent(receipt, 'Transfer', {
+            from: ZERO_ADDRESS,
+            to: inst.address,
+            value: expectedReward.toString(),
+          });
+          expectEvent(receipt, 'Reward', {
+            memoHash: '0x'+ENDURIO_HASH,
+            memo: '0x'+ENDURIO_HEX,
+            payer: inst.address,
+            payee: txData.miner,
+            amount: expectedReward.toString(),
+          });
+        }
       }
 
       function claim(txData, inputIdx, pkhPos) {
@@ -157,7 +182,7 @@ contract("PoR", accounts => {
         }
         extra = extra.pad(64);
 
-        return instPoR.claim('0x'+txData.block, '0x'+memoHash, '0x'+vin, '0x'+vout, '0x'+extra);
+        return instPoR.claim('0x'+txData.block, '0x'+ENDURIO_HASH, '0x'+vin, '0x'+vout, '0x'+extra);
       }
     })
   })
