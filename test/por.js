@@ -17,8 +17,12 @@ const ENDURIO_HEX = '656e6475722e696f0000000000000000000000000000000000000000000
 const ENDURIO_HASH = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+const DUMMY_ADDRESS = '0x0123456789012345678901234567890123456789';
 
 contract("PoR", accounts => {
+  expect(accounts[0]).to.equal(keys[0].address, 'should the first keys data is the sender account');
+  const sender = keys[0];
+
   before('should chain time be in the past', async () => {
     const chainTimestamp = Number(await time.latest())
     let oldestTimestamp // find the oldest block from the data
@@ -94,21 +98,19 @@ contract("PoR", accounts => {
       }
     })
 
-    it("registerMiner", async() => {
-      for (const key of keys) {
-        await expectRevert(
-          instPoR.registerMiner('0x'+key.public, '0x0123456789012345678901234567890123456789'),
-          "only pkh owner can change the beneficient address");
-        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS);
-      }
-    })
+    it("miner", async() => {
+      await instPoR.registerMiner('0x'+sender.public, keys[1].address); // register and set the recipient
+      await expectRevert(
+            instPoR.changeMiner('0x'+sender.pkh, sender.address), "only for old owner");
+      await instPoR.registerMiner('0x'+sender.public, ZERO_ADDRESS);    // reset the recipient by PKH
+      await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);        // change the recipient by the current owner
+      await instPoR.registerMiner('0x'+sender.public, ZERO_ADDRESS);    // reset the recipient by PKH
 
-    it("changeMiner", async() => {
-      for (const key of keys) {
-        await expectRevert(
-          instPoR.changeMiner('0x'+key.pkh, '0x0123456789012345678901234567890123456789'),
-          "only for old owner");
-      }
+      await expectRevert(
+            instPoR.registerMiner('0x'+keys[1].public, sender.address), "only pkh owner can change the beneficient address");
+      await instPoR.registerMiner('0x'+keys[1].public, ZERO_ADDRESS);
+      await expectRevert(
+            instPoR.changeMiner('0x'+keys[1].pkh, sender.address), "only for old owner");
     })
 
     it("claim", async() => {

@@ -2,11 +2,12 @@
   "name": "por",
   "version": "1.0.0",
   "description": "Endurio Proof of Reference",
+  "account": "0x443f917b8486e3f61320660b0f5f425a4a2c36fd658ecc325b755721c040d606,1000000000000000000000",
   "scripts": {
     "compile": "truffle compile --all",
     "deploy": "truffle migrate --reset --network ${NODE_ENV:-local}",
     "parser": "babel-eslint",
-    "ganache": "fuser -k -n tcp 8545; ganache-cli --deterministic --quiet --time 2020-05-17T08:33:15.000Z > /dev/null 2>&1 &",
+    "ganache": "fuser -k -n tcp 8545; ganache-cli --account=$npm_package_account --quiet --time 2020-05-17T08:33:15.000Z > /dev/null 2>&1 &",
     "test": "yarn ganache && truffle test --network ${NODE_ENV:-local}",
     "//pretest": "eslint --ignore-path .gitignore .",
     "lint": "eslint ./**.js **.js",
