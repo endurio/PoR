@@ -139,18 +139,24 @@ contract("PoR", accounts => {
         // PKH never be in the start of the output script
         await expectRevert(claim(txData, 0, 10), "unregistered PKH");
 
-        const ss = await snapshot.take();
+        { // snapshot scope
+          const ss = await snapshot.take();
 
-        // auto detect PKH position
-        expectEventClaim(await claim(txData, 0));
+          if (txData.miner === sender.address) {
+            var recipient = DUMMY_ADDRESS
+            await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
+          }
+          // auto detect PKH position
+          expectEventClaim(await claim(txData, 0), recipient);
 
-        await snapshot.revert(ss);
+          await snapshot.revert(ss);
+        }
 
         // PKH position in output script is different between segwit and legacy
         const isSegWit = txData.hex.slice(8, 10) === '00';
         expectEventClaim(await claim(txData, 0, isSegWit ? 11 : 12));
 
-        function expectEventClaim(receipt) {
+        function expectEventClaim(receipt, recipient) {
           expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
           expectEvent(receipt, 'Transfer', {
             from: ZERO_ADDRESS,
@@ -161,7 +167,7 @@ contract("PoR", accounts => {
             memoHash: '0x'+ENDURIO_HASH,
             memo: '0x'+ENDURIO_HEX,
             payer: inst.address,
-            payee: txData.miner,
+            payee: recipient || txData.miner,
             amount: expectedReward.toString(),
           });
         }
