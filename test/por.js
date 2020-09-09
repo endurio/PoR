@@ -70,21 +70,21 @@ contract("PoR", accounts => {
         expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
 
         let extra =
-          pad(idx.toString(16), 8) +
+          idx.toString(16).pad(8) +
           '00000000' +
           '00000000' +
           '00000000' +
-          pad((1).toString(16), 8) +
-          pad(outIdx.toString(16), 8) +
-          reverseHex(pad(locktime.toString(16), 8)) +
-          reverseHex(pad(version.toString(16), 8));
+          (1).toString(16).pad(8) +
+          outIdx.toString(16).pad(8) +
+          locktime.toString(16).pad(8).reverseHex() +
+          version.toString(16).pad(8).reverseHex();
 
         if (tx.ins.length > 1) {
           await instPoR.commitTx('0x'+txMeta.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
         }
 
         extra = extra.slice(0, 32) +
-          pad((0).toString(16), 8) +  // change the miner input index
+          (0).toString(16).pad(8) +  // change the miner input index
           extra.slice(40);
 
         await instPoR.commitTx('0x'+txMeta.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
@@ -149,13 +149,13 @@ contract("PoR", accounts => {
         const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
 
         extra =
-          reverseHex(pad(locktime.toString(16), 8)) +
-          reverseHex(pad(version.toString(16), 8));
+          locktime.toString(16).pad(8).reverseHex() +
+          version.toString(16).pad(8).reverseHex();
 
         if (pkhPos) {
-          extra = pad(pkhPos.toString(16), 8) + extra
+          extra = pkhPos.toString(16).pad(8) + extra
         }
-        extra = pad(extra, 64);
+        extra = extra.pad(64);
 
         return instPoR.claim('0x'+txMeta.block, '0x'+memoHash, '0x'+vin, '0x'+vout, '0x'+extra);
       }
@@ -175,19 +175,28 @@ function findMemoOutputIndex(outs, brand) {
   }
 }
 
-function pad(s, n) {
-  const l = s ? s.length : 0;
-  for (let i = l; i < n; ++i) {
-    s = '0' + s;
-  }
-  return s;
+if (!String.prototype.pad) {
+  Object.defineProperty(String.prototype, 'pad', {
+    enumerable: false,
+    value: function(n) {
+      if (this.length >= n) {
+        return this;
+      }
+      return '0'.repeat(n-this.length) + this;
+    },
+  });
 }
 
-function reverseHex(s) {
-  s = s.replace(/^(.(..)*)$/, "0$1"); // add a leading zero if needed
-  const a = s.match(/../g);           // split number in groups of two
-  a.reverse();                        // reverse the groups
-  return a.join('');                  // join the groups back together
+if (!String.prototype.reverseHex) {
+  Object.defineProperty(String.prototype, 'reverseHex', {
+    enumerable: false,
+    value: function() {
+      const s = this.replace(/^(.(..)*)$/, "0$1");  // add a leading zero if needed
+      const a = s.match(/../g);                     // split number in groups of two
+      a.reverse();                                  // reverse the groups
+      return a.join('');                            // join the groups back together
+    },
+  });
 }
 
 function stripTxWitness(hex, tx) {
@@ -223,7 +232,7 @@ function extractTxParams(hex, tx) {
   hex = stripTxWitness(hex, tx);
 
   // lazily assume that the last input sequence hex is unique
-  const lastSequence = reverseHex(pad(tx.ins[tx.ins.length-1].sequence.toString(16), 8));
+  const lastSequence = tx.ins[tx.ins.length-1].sequence.toString(16).pad(8).reverseHex();
   const pos = hex.lastIndexOf(lastSequence);
   expect(pos).to.be.at.least(0, `last input sequence hex not found: ${lastSequence}`);
   const voutStart = pos + lastSequence.length;
