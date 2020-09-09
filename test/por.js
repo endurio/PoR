@@ -59,12 +59,12 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
       ]
       for (const txHash of commitTxs) {
-        const txMeta = txs[txHash];
-        const block = bitcoinjs.Block.fromHex(blocks[txMeta.block]);
+        const txData = txs[txHash];
+        const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
         const [proofs, idx] = getMerkleProof(block, txHash);
 
-        const tx = bitcoinjs.Transaction.fromHex(txMeta.hex);
-        const [version, vin, vout, locktime] = extractTxParams(txMeta.hex, tx);
+        const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+        const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
 
         const outIdx = findMemoOutputIndex(tx.outs, memo);
         expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
@@ -80,14 +80,14 @@ contract("PoR", accounts => {
           version.toString(16).pad(8).reverseHex();
 
         if (tx.ins.length > 1) {
-          await instPoR.commitTx('0x'+txMeta.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+          await instPoR.commitTx('0x'+txData.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
         }
 
         extra = extra.slice(0, 32) +
           (0).toString(16).pad(8) +  // change the miner input index
           extra.slice(40);
 
-        await instPoR.commitTx('0x'+txMeta.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+        await instPoR.commitTx('0x'+txData.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
       }
     })
 
@@ -117,31 +117,31 @@ contract("PoR", accounts => {
 
       { // scope in
         const txHash = commitTxs[0];
-        const txMeta = txs[txHash];
-        await expectRevert(claim(txMeta, 0), "mining time not over");
+        const txData = txs[txHash];
+        await expectRevert(claim(txData, 0), "mining time not over");
       }
 
       for (const txHash of commitTxs) {
-        const txMeta = txs[txHash];
+        const txData = txs[txHash];
 
-        const block = bitcoinjs.Block.fromHex(blocks[txMeta.block]);
+        const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
         await time.increaseTo(block.timestamp + 60*60);
 
         // PKH never be in the start of the output script
-        await expectRevert(claim(txMeta, 0, 10), "unregistered PKH");
+        await expectRevert(claim(txData, 0, 10), "unregistered PKH");
 
         // auto detect PKH position
         const ss = await snapshot.take();
-        await claim(txMeta, 0);
+        await claim(txData, 0);
 
         await snapshot.revert(ss);
         // PKH position in output script is different between segwit and legacy
-        const isSegWit = txMeta.hex.slice(8, 10) === '00';
-        await claim(txMeta, 0, isSegWit ? 11 : 12);
+        const isSegWit = txData.hex.slice(8, 10) === '00';
+        await claim(txData, 0, isSegWit ? 11 : 12);
       }
 
-      function claim(txMeta, inputIdx, pkhPos) {
-        const tx = bitcoinjs.Transaction.fromHex(txMeta.hex);
+      function claim(txData, inputIdx, pkhPos) {
+        const tx = bitcoinjs.Transaction.fromHex(txData.hex);
         const dxHash = tx.ins[inputIdx].hash.reverse().toString('hex');
 
         // dependency tx
@@ -157,7 +157,7 @@ contract("PoR", accounts => {
         }
         extra = extra.pad(64);
 
-        return instPoR.claim('0x'+txMeta.block, '0x'+memoHash, '0x'+vin, '0x'+vout, '0x'+extra);
+        return instPoR.claim('0x'+txData.block, '0x'+memoHash, '0x'+vin, '0x'+vout, '0x'+extra);
       }
     })
   })
