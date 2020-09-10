@@ -48,14 +48,36 @@ contract("PoR", accounts => {
   describe('mine', () => {
     it("commitBlock", async() => {
       const commitBlocks = [
-        '000000000000009cc9cc0d820f060f3c7dd868162f5fdfba0dfc2050fb0bda68',
-        '00000000000000532f27676512db71ab780b125cbb7d86db06d74c2ec73ff791',
         '00000000000002152b5fe8c807c4743bb0633d6e1d70f3cc96d5e542ba4ef07a',
+        '00000000000000532f27676512db71ab780b125cbb7d86db06d74c2ec73ff791',
+        '000000000000009cc9cc0d820f060f3c7dd868162f5fdfba0dfc2050fb0bda68',
       ]
+
       for (const hash of commitBlocks) {
-        const header = blocks[hash].substring(0, 160)
+        const raw = blocks[hash];
+        const header = raw.substring(0, 160)
+        const block = bitcoinjs.Block.fromHex(raw)
+
+        { // snapshot scope
+          const ss = await snapshot.take();
+          await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
+          await instPoR.commitBlock('0x'+header)
+          await snapshot.revert(ss);
+        }
+
+        { // snapshot scope
+          const ss = await snapshot.take();
+          await time.increaseTo(block.timestamp + 60*60)
+          await expectRevert(instPoR.commitBlock('0x'+header), 'block too old')
+          await snapshot.revert(ss);
+        }
+
         await instPoR.commitBlock('0x'+header)
         await expectRevert(instPoR.commitBlock('0x'+header), 'block committed')
+
+        // bad block header
+        const badHeader = header.slice(0, header.length-8) + '00000000'; // clear the nonce field
+        await expectRevert(instPoR.commitBlock('0x'+badHeader), 'insufficient work')
       }
     })
 
