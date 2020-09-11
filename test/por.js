@@ -51,6 +51,7 @@ contract("PoR", accounts => {
         '00000000000002152b5fe8c807c4743bb0633d6e1d70f3cc96d5e542ba4ef07a',
         '00000000000000532f27676512db71ab780b125cbb7d86db06d74c2ec73ff791',
         '000000000000009cc9cc0d820f060f3c7dd868162f5fdfba0dfc2050fb0bda68',
+        '00000000000000553dea07bc6e4e48a03c02bd46af124307ffb065e7e97e0c76',
       ]
 
       for (const hash of commitBlocks) {
@@ -81,42 +82,70 @@ contract("PoR", accounts => {
       }
     })
 
+    it("commitTx competition", async() => {
+      const losingTx = 'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a'
+      const winingTx = 'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78' // intentional typo
+
+      const ss = await snapshot.take();
+      await commitTx(losingTx)
+      await commitTx(winingTx)
+      await expectRevert(commitTx(losingTx), 'better tx committed');
+      await snapshot.revert(ss);
+    })
+
     it("commitTx", async() => {
       const commitTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
         'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
+        'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
+        'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
       ]
       for (const txHash of commitTxs) {
-        const txData = txs[txHash];
-        const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-        const [proofs, idx] = getMerkleProof(block, txHash);
+        let [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+        const blockHash = block.getId();
 
-        const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-        const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
+        await expectRevert(
+          instPoR.commitTx('0x'+blockHash.reverseHex(), '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout),
+          'no such block',
+          );
 
-        const outIdx = findMemoOutputIndex(tx.outs, ENDURIO);
-        expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
+        await expectRevert(
+          instPoR.commitTx('0x'+blockHash, '0x'+proofs.slice(64), '0x'+extra, '0x'+vin, '0x'+vout),
+          'invalid merkle proof',
+        );
 
-        let extra =
-          idx.toString(16).pad(8) +
-          '00000000' +
-          '00000000' +
-          '00000000' +
-          (1).toString(16).pad(8) +
-          outIdx.toString(16).pad(8) +
-          locktime.toString(16).pad(8).reverseHex() +
-          version.toString(16).pad(8).reverseHex();
-
-        if (tx.ins.length > 1) {
-          await instPoR.commitTx('0x'+txData.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+        { // snapshot scope
+          const ss = await snapshot.take();
+          await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
+          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+          await snapshot.revert(ss);
         }
 
-        extra = extra.slice(0, 32) +
-          (0).toString(16).pad(8) +  // change the miner input index
+        { // snapshot scope
+          const ss = await snapshot.take();
+          await time.increaseTo(block.timestamp + 60*60)
+          await expectRevert(
+            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout),
+            'mining time over',
+          );
+          await snapshot.revert(ss);
+        }
+
+        const extra1 = extra.slice(0, 32) +
+          (1).toString(16).pad(8) +  // change the miner input index
           extra.slice(40);
 
-        await instPoR.commitTx('0x'+txData.block, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+        if (tx.ins.length > 1) {
+          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+        } else {
+          await expectRevert(
+            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+            'Vin read overrun',
+          );
+        }
+
+        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
       }
     })
 
@@ -140,6 +169,7 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
         'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
+        'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
       ]
 
       { // scope in
@@ -164,8 +194,9 @@ contract("PoR", accounts => {
         { // snapshot scope
           const ss = await snapshot.take();
 
+          let recipient = undefined;
           if (txData.miner === sender.address) {
-            var recipient = DUMMY_ADDRESS
+            recipient = DUMMY_ADDRESS
             await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
           }
           // auto detect PKH position
@@ -218,6 +249,37 @@ contract("PoR", accounts => {
   })
 })
 
+function commitTx(txHash) {
+  const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+  const blockHash = block.getId();
+  return instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+}
+
+function prepareCommitTx(txHash) {
+  const txData = txs[txHash];
+  const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+  const [proofs, idx] = getMerkleProof(block, txHash);
+
+  const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+  expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
+  const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
+
+  const outIdx = findMemoOutputIndex(tx.outs, ENDURIO);
+  expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
+
+  let extra =
+    idx.toString(16).pad(8) +
+    '00000000' +
+    '00000000' +
+    '00000000' +
+    (0).toString(16).pad(8) +
+    outIdx.toString(16).pad(8) +
+    locktime.toString(16).pad(8).reverseHex() +
+    version.toString(16).pad(8).reverseHex();
+  
+  return [block, proofs, extra, vin, vout];
+}
+
 function findMemoOutputIndex(outs, brand) {
   for(let i = 0; i < outs.length; ++i) {
     const script = outs[i].script;
@@ -254,37 +316,21 @@ if (!String.prototype.reverseHex) {
   });
 }
 
-function stripTxWitness(hex, tx) {
-  tx = tx || bitcoinjs.Transaction.fromHex(hex);
-  const isSegWit = hex.slice(8, 10) === '00';
-  if (!isSegWit) {
+function stripTxWitness(hex) {
+  tx = bitcoinjs.Transaction.fromHex(hex);
+  if (!tx.hasWitnesses()) {
     return hex;
   }
-
-  // remove segwit marker and flag
-  hex = hex.slice(0, 8) + hex.slice(12);
-  // remove all witness data
-  let pos = 0;
-  for (const input of tx.ins) {
-    for (const w of input.witness) {
-      if (w.length <= 0) {
-        continue;
-      }
-      const witness = w.toString('hex');
-      pos = hex.indexOf(witness, pos);
-      expect(pos).to.be.at.least(0, `witness not found: ${witness}`);
-      expect(parseInt(hex.slice(pos-2, pos), 16)).to.equal(w.length, 'witness length prefix mismatch');
-      hex = hex.slice(0, pos-2) + hex.slice(pos + witness.length);
-    }
+  for (let i = 0; i < tx.ins.length; ++i) {
+    tx.setWitness(i, []);
   }
-  // remove 1-byte of 'number of witnesses'
-  hex = hex.slice(0, hex.length-10) + hex.slice(hex.length-8);
-  return hex;
+  return tx.toHex();
 }
 
 function extractTxParams(hex, tx) {
   tx = tx || bitcoinjs.Transaction.fromHex(hex);
-  hex = stripTxWitness(hex, tx);
+  hex = stripTxWitness(hex);
+  expect(bitcoinjs.Transaction.fromHex(hex).getId()).to.equal(tx.getId(), 'bad code: stripTxWitness');
 
   // lazily assume that the last input sequence hex is unique
   const lastSequence = tx.ins[tx.ins.length-1].sequence.toString(16).pad(8).reverseHex();
@@ -306,7 +352,7 @@ function getMerkleProof(block, txid) {
     txs.push(Buffer.from(tx.getId(), 'hex').reverse());
   }
 
-  expect(index).to.be.at.least(0, 'Transaction not in block.');
+  expect(index).to.be.at.least(0, 'tx not found');
 
   const [root] = merkle.createRoot(hash256, txs.slice());
   expect(block.merkleRoot.toString('hex')).to.equal(root.toString('hex'), 'merkle root mismatch');
