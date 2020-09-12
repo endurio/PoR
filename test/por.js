@@ -94,6 +94,60 @@ contract("PoR", accounts => {
       await snapshot.revert(ss);
     })
 
+    it("commitTx custom PK position in redeem script", async() => {
+      const commitTxs = [
+        'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
+        '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
+      ]
+      for (const txHash of commitTxs) {
+        const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+        const blockHash = block.getId();
+
+        const txData = txs[txHash];
+        const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+        const posPK = findPubKeyPos(tx.ins[0].script)
+
+        const key = keys.find(k => k.address == txData.miner)
+        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient
+
+        await testPosPK(posPK-1, undefined, "unregistered PKH");
+        await testPosPK(posPK+4, undefined, "unregistered PKH");
+        await testPosPK(posPK+5, "Slice out of bounds", undefined);
+        await testPosPK(posPK);
+
+        async function testPosPK(posPK, commitRevert, claimRevert) {
+          const extra1 = setPubKeyPos(extra, posPK);
+          if (commitRevert) {
+            return expectRevert(
+              instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+              commitRevert
+            );
+          }
+          const ss = await snapshot.take();
+          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+          await time.increaseTo(block.timestamp + 60*60);
+          if (claimRevert) {
+            await expectRevert(claim(txData), claimRevert);
+          } else {
+            await claim(txData);
+          }
+          await snapshot.revert(ss);
+        }
+      }
+
+      function findPubKeyPos(script) {
+        const sigLen = script[0];
+        expect(script[sigLen+1]).to.equal(33, 'should pubkey length prefix byte is 33');
+        return sigLen+2;
+      }
+
+      function setPubKeyPos(extra, posPK) {
+        return extra.slice(0, 8*3) +
+          (posPK).toString(16).pad(8) +
+          extra.slice(8*4);
+      }
+    })
+
     it("commitTx", async() => {
       const commitTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
@@ -340,10 +394,10 @@ function prepareCommitTx(txHash) {
 
   let extra =
     idx.toString(16).pad(8) +
-    '00000000' +
-    '00000000' +
-    '00000000' +
     (0).toString(16).pad(8) +
+    '00000000' +  // memo length
+    '00000000' +  // unused
+    '00000000' +  // compressed PK position
     outIdx.toString(16).pad(8) +
     locktime.toString(16).pad(8).reverseHex() +
     version.toString(16).pad(8).reverseHex();
