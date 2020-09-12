@@ -52,6 +52,7 @@ contract("PoR", accounts => {
         '00000000000000532f27676512db71ab780b125cbb7d86db06d74c2ec73ff791',
         '000000000000009cc9cc0d820f060f3c7dd868162f5fdfba0dfc2050fb0bda68',
         '00000000000000553dea07bc6e4e48a03c02bd46af124307ffb065e7e97e0c76',
+        '000000000000024e0d7c55d4fdff24c031544f93df465870b4060f095ae60589',
       ]
 
       for (const hash of commitBlocks) {
@@ -100,6 +101,7 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
         'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
         'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
+        '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
       ]
       for (const txHash of commitTxs) {
         let [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
@@ -162,20 +164,22 @@ contract("PoR", accounts => {
       await instPoR.registerMiner('0x'+keys[1].public, ZERO_ADDRESS);
       await expectRevert(
             instPoR.changeMiner('0x'+keys[1].pkh, sender.address), "only for old owner");
+
+      // register the rest
+      for (let i = 2; i < keys.length; ++i) {
+        await instPoR.registerMiner('0x'+keys[i].public, ZERO_ADDRESS);
+      }
     })
 
-    it("claim", async() => {
+    it("claimWithPrevTx", async() => {
       const commitTxs = [
-        '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
-        'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
-        'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
       ]
 
       { // scope in
         const txHash = commitTxs[0];
         const txData = txs[txHash];
-        await expectRevert(claim(txData, 0), "mining time not over");
+        await expectRevert(claimWithPrevTx(txData, 0), "mining time not over");
       }
 
       for (const txHash of commitTxs) {
@@ -186,30 +190,38 @@ contract("PoR", accounts => {
         const MAX_TARGET = 1n<<240n;
         const expectedReward = MAX_TARGET / BigInt('0x'+txData.block);
 
-        await time.increaseTo(block.timestamp + 60*60);
+        const targetTimestamp = block.timestamp + 60*60;
+        if (await time.latest() < targetTimestamp) {
+          await time.increaseTo(targetTimestamp);
+        }
 
-        // PKH never be in the start of the output script
-        await expectRevert(claim(txData, 0, 10), "unregistered PKH");
+        await expectRevert(claim(txData), "use claimWithPrevTx instead");
 
+        // test the manual PKH position in output script
         { // snapshot scope
           const ss = await snapshot.take();
+          // PKH never be in the start of the output script
+          await expectRevert(claimWithPrevTx(txData, 0, 10), "unregistered PKH");
 
-          let recipient = undefined;
-          if (txData.miner === sender.address) {
-            recipient = DUMMY_ADDRESS
-            await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          }
-          // auto detect PKH position
-          expectEventClaim(await claim(txData, 0), recipient);
-
+          // PKH position in output script is different between segwit and legacy
+          const isSegWit = txData.hex.slice(8, 10) === '00';
+          await expectEventClaim(claimWithPrevTx(txData, 0, isSegWit ? 11 : 12));
+          await snapshot.revert(ss);
+        }
+        
+        if (txData.miner === sender.address) { // we own the miner address
+          const ss = await snapshot.take();
+          await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
+          await expectEventClaim(claimWithPrevTx(txData, 0), DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
-        // PKH position in output script is different between segwit and legacy
-        const isSegWit = txData.hex.slice(8, 10) === '00';
-        expectEventClaim(await claim(txData, 0, isSegWit ? 11 : 12));
+        // auto detect PKH position
+        await expectEventClaim(claimWithPrevTx(txData, 0));
+        await expectRevert(claimWithPrevTx(txData, 0), "no such block");
 
-        function expectEventClaim(receipt, recipient) {
+        async function expectEventClaim(call, recipient) {
+          const receipt = await call;
           expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
           expectEvent(receipt, 'Transfer', {
             from: ZERO_ADDRESS,
@@ -225,29 +237,88 @@ contract("PoR", accounts => {
           });
         }
       }
+    })
 
-      function claim(txData, inputIdx, pkhPos) {
-        const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-        const dxHash = tx.ins[inputIdx].hash.reverse().toString('hex');
+    it("claim", async() => {
+      const commitTxs = [
+        'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
+        '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
+        'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
+        '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+      ]
 
-        // dependency tx
-        const dxMeta = txs[dxHash];
-        const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
+      for (const txHash of commitTxs) {
+        const txData = txs[txHash];
 
-        extra =
-          locktime.toString(16).pad(8).reverseHex() +
-          version.toString(16).pad(8).reverseHex();
+        const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
 
-        if (pkhPos) {
-          extra = pkhPos.toString(16).pad(8) + extra
+        const MAX_TARGET = 1n<<240n;
+        const expectedReward = MAX_TARGET / BigInt('0x'+txData.block);
+
+        const targetTimestamp = block.timestamp + 60*60;
+        if (await time.latest() < targetTimestamp) {
+          await time.increaseTo(targetTimestamp);
         }
-        extra = extra.pad(64);
 
-        return instPoR.claim('0x'+txData.block, '0x'+ENDURIO_HASH, '0x'+vin, '0x'+vout, '0x'+extra);
+        await expectRevert(claimWithPrevTx(txData, 0), "use claim instead");
+
+        if (txData.miner === sender.address) { // we own the miner address
+          const ss = await snapshot.take();
+          await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
+          await expectEventClaim(claim(txData), DUMMY_ADDRESS);
+          await snapshot.revert(ss);
+        }
+
+        // auto detect PKH position
+        await expectEventClaim(claim(txData));
+        await expectRevert(claim(txData), "no such block");
+
+        async function expectEventClaim(call, recipient) {
+          const receipt = await call;
+          expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
+          expectEvent(receipt, 'Transfer', {
+            from: ZERO_ADDRESS,
+            to: inst.address,
+            value: expectedReward.toString(),
+          });
+          expectEvent(receipt, 'Reward', {
+            memoHash: '0x'+ENDURIO_HASH,
+            memo: '0x'+ENDURIO_HEX,
+            payer: inst.address,
+            payee: recipient || txData.miner,
+            amount: expectedReward.toString(),
+          });
+        }
       }
     })
+
   })
 })
+
+function claim(txData) {
+  const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+  return instPoR.claim('0x'+txData.block, '0x'+ENDURIO_HASH);
+}
+
+function claimWithPrevTx(txData, inputIdx, pkhPos) {
+  const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+  const dxHash = tx.ins[inputIdx].hash.reverse().toString('hex');
+
+  // dependency tx
+  const dxMeta = txs[dxHash];
+  const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
+
+  extra =
+    locktime.toString(16).pad(8).reverseHex() +
+    version.toString(16).pad(8).reverseHex();
+
+  if (pkhPos) {
+    extra = pkhPos.toString(16).pad(8) + extra
+  }
+  extra = extra.pad(64);
+
+  return instPoR.claimWithPrevTx('0x'+txData.block, '0x'+ENDURIO_HASH, '0x'+vin, '0x'+vout, '0x'+extra);
+}
 
 function commitTx(txHash) {
   const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
@@ -276,7 +347,7 @@ function prepareCommitTx(txHash) {
     outIdx.toString(16).pad(8) +
     locktime.toString(16).pad(8).reverseHex() +
     version.toString(16).pad(8).reverseHex();
-  
+
   return [block, proofs, extra, vin, vout];
 }
 
