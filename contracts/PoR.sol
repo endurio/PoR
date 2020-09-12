@@ -25,8 +25,9 @@ contract PoR is DataStructure {
     uint constant EXTRA_PKH_IDX     = 32*2;
     uint constant EXTRA_OUTPUT_IDX  = 32*2;
     uint constant EXTRA_INPUT_IDX   = 32*3;
-    uint constant EXTRA_MEMO_LENGTH = 32*4;
+    uint constant EXTRA_PUBKEY_POS  = 32*4;
     // uint constant EXTRA_MINER_POS = 32*5;
+    uint constant EXTRA_MEMO_LENGTH = 32*6;
     uint constant EXTRA_MERKLE_IDX  = 32*7;
 
     using BTCUtils for bytes;
@@ -197,9 +198,9 @@ contract PoR is DataStructure {
     /// @param _merkleProof The proof's intermediate nodes (digests between leaf and root)
     /// @param _extra       All the following params packed in a single bytes32
     ///     uint32 EXTRA_MERKLE_IDX  // the merkle leaf's index in the tree (0-indexed)
+    ///     uint32 EXTRA_MEMO_LENGTH // (optional) memo lengh in OP_RET to add extra user memo after the brand
     ///     uint32
-    ///     uint32
-    ///     uint32 EXTRA_MEMO_LENGTH
+    ///     uint32 EXTRA_PUBKEY_POS  // (optional) index of 33-bytes compressed PubKey in input redeem script
     ///     uint32 EXTRA_INPUT_IDX   // index of input which its outpoint locking script contains the miner PKH
     ///     uint32 EXTRA_OUTPUT_IDX  // index of OP_RET output
     ///     uint32 EXTRA_LOCKTIME    // tx locktime, little endian
@@ -250,9 +251,12 @@ contract PoR is DataStructure {
 
         // store the outpoint to claim the reward later
         bytes memory input = _vin.extractInputAtIndex(extractUint32(_extra, EXTRA_INPUT_IDX));
+        uint posPK = extractUint32(_extra, EXTRA_PUBKEY_POS);
 
-        // TODO: manual input PKH/PK position
-        if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) { // TODO: compare byte-by-byte
+        if (posPK > 0) {
+            // custom P2SH redeem script with compressed PubKey
+            winner.pkh = getPKH(input.slice(32+4+1+posPK, 33));
+        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) { // TODO: compare byte-by-byte
             // redeem script for P2SH-P2WPKH
             winner.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
