@@ -52,7 +52,8 @@ contract ENDR is DataStructure {
         impls[0x8e19899e] = implBrandMarket;    // withdraw
         impls[0x1de26e16] = implBrandMarket;    // deposit
         impls[0xd954863c] = implBrandMarket;    // deposit
-        impls[0x678964a3] = implPoR;    // claim
+        impls[0x84cc9dfb] = implPoR;    // claim
+        impls[0x94457260] = implPoR;    // claimWithPrevTx
         impls[0x60b5fe2a] = implPoR;    // commitTx
         impls[0xd02898cf] = implPoR;    // commitBlock
         impls[0x495dd54b] = implPoR;    // registerMiner

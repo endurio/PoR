@@ -36,6 +36,26 @@ contract PoR is DataStructure {
 
     function claim(
         bytes32 _blockHash,     // big-endian
+        bytes32 _memoHash
+    ) external {
+        Header storage header = headers[_blockHash];
+        Transaction storage winner = _mustGetBlockWinner(header, _memoHash);
+
+        { // stack too deep
+        bytes32 packed = winner.packed;
+        // uint outpointIndex = uint(packed) & 0xFFFFFFFF;
+        bytes20 pkh = bytes20(packed);
+        require(pkh != 0, "PubKey or PKH not relayed, use claimWithPrevTx instead");
+        address miner = miners[pkh];
+        require(miner != address(0x0), "unregistered PKH");
+        _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash));
+        }
+
+        _cleanUpWinner(_blockHash, _memoHash);
+    }
+
+    function claimWithPrevTx(
+        bytes32 _blockHash,     // big-endian
         bytes32 _memoHash,
         bytes calldata _vin,    // outpoint tx input vector
         bytes calldata _vout,   // outpoint tx output vector
@@ -46,14 +66,10 @@ contract PoR is DataStructure {
             // uint32 EXTRA_VERSION,    // tx version
     ) external {
         Header storage header = headers[_blockHash];
-        { // stack too deep
-        uint32 timestamp = header.timestamp;
-        require(timestamp != 0, "no such block");
-        require(!_minable(timestamp), "mining time not over");
-        }
+        Transaction storage winner = _mustGetBlockWinner(header, _memoHash);
 
-        Transaction storage winner = header.winner[_memoHash];
-        require(winner.id != 0, "no such tx");
+        bytes32 packed = winner.packed;
+        require(bytes20(packed) == 0, "PubKey or PKH already relayed, use claim instead");
 
         { // stack too deep
         bytes32 txId = ValidateSPV.calculateTxId(
@@ -65,13 +81,33 @@ contract PoR is DataStructure {
         }
 
         { // stack too deep
-        bytes memory output = _vout.extractOutputAtIndex(winner.outpointIndexLE.reverseEndianness().toUint32(0));
+        // uint outpointIndex = uint(packed) & 0xFFFFFFFF;
+        bytes memory output = _vout.extractOutputAtIndex(uint(packed) & 0xFFFFFFFF);
         bytes20 pkh = extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX));
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
         _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash));
         }
 
+        _cleanUpWinner(_blockHash, _memoHash);
+    }
+
+    function _mustGetBlockWinner(
+        Header storage header,
+        bytes32 _memoHash
+    ) internal view returns (Transaction storage winner) {
+        { // stack too deep
+        uint32 timestamp = header.timestamp;
+        require(timestamp != 0, "no such block");
+        require(!_minable(timestamp), "mining time not over");
+        }
+
+        winner = header.winner[_memoHash];
+        require(winner.id != 0, "no tx commited");
+    }
+
+    function _cleanUpWinner(bytes32 _blockHash, bytes32 _memoHash) internal {
+        Header storage header = headers[_blockHash];
         delete header.winner[_memoHash];
 
         if (header.minable > 1) {
@@ -214,8 +250,20 @@ contract PoR is DataStructure {
 
         // store the outpoint to claim the reward later
         bytes memory input = _vin.extractInputAtIndex(extractUint32(_extra, EXTRA_INPUT_IDX));
-        winner.outpointTxLE = input.extractInputTxIdLE();
-        winner.outpointIndexLE = input.extractTxIndexLE();
+
+        // TODO: manual input PKH/PK position
+        if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) { // TODO: compare byte-by-byte
+            // redeem script for P2SH-P2WPKH
+            winner.packed = input.slice(32+4+4, 20).toBytes32();
+        } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
+            // redeem script for P2PKH
+            winner.packed = bytes32(getPKH(input.slice(input.length-33-4, 33)));
+        } else {
+            uint outpointIndex = uint(input.extractTxIndexLE().reverseEndianness().toUint32(0));
+            winner.packed = bytes32(outpointIndex);
+            winner.outpointTxLE = input.extractInputTxIdLE();
+        }
+
         winner.id = txId;
     }
 
@@ -276,7 +324,7 @@ contract PoR is DataStructure {
             require(msg.sender == adr, "only pkh owner can change the beneficient address");
             adr = _beneficient;
         }
-        bytes20 pkh = getPKH(_pubkey);
+        bytes20 pkh = getPKH(compressPK(_pubkey));
         miners[pkh] = adr;
     }
 
@@ -289,10 +337,15 @@ contract PoR is DataStructure {
     }
 
     function getPKH(
-        bytes memory _pubkey    // uncompressed, unprefixed 64-bytes pubic key
+        bytes memory compressedPubkey    // compressed, refixed 33-bytes pubic key
     ) internal pure returns (bytes20 pkh) {
-        uint8 _prefix = uint8(_pubkey[_pubkey.length - 1]) % 2 == 1 ? 3 : 2;
-        bytes memory compressedPubkey = abi.encodePacked(_prefix, _pubkey.slice(0, 32));
         return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
+    }
+
+    function compressPK(
+        bytes memory _pubkey    // uncompressed, unprefixed 64-bytes pubic key
+    ) internal pure returns (bytes memory) {
+        uint8 _prefix = uint8(_pubkey[_pubkey.length - 1]) % 2 == 1 ? 3 : 2;
+        return abi.encodePacked(_prefix, _pubkey.slice(0, 32));
     }
 }
