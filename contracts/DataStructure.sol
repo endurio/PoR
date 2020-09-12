@@ -159,9 +159,7 @@ struct Header {
 
 struct Transaction {
     bytes32 id;
-    bytes32 outpointTxLE;
-    bytes32 packed;
-        // bytes20  PKH (from P2SH-W input redeem script) and the last 4 bytes
-        // bytes8   unused
-        // uint32   outpointIndex
+    bytes32 outpointTxLE;   // for P2WPKH
+    uint32  outpointIdx;    // for P2WPKH
+    bytes20 pkh;            // for P2PKH, P2SH-P2WPKH
 }

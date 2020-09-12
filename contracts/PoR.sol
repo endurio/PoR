@@ -42,9 +42,7 @@ contract PoR is DataStructure {
         Transaction storage winner = _mustGetBlockWinner(header, _memoHash);
 
         { // stack too deep
-        bytes32 packed = winner.packed;
-        // uint outpointIndex = uint(packed) & 0xFFFFFFFF;
-        bytes20 pkh = bytes20(packed);
+        bytes20 pkh = winner.pkh;
         require(pkh != 0, "PubKey or PKH not relayed, use claimWithPrevTx instead");
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
@@ -68,21 +66,19 @@ contract PoR is DataStructure {
         Header storage header = headers[_blockHash];
         Transaction storage winner = _mustGetBlockWinner(header, _memoHash);
 
-        bytes32 packed = winner.packed;
-        require(bytes20(packed) == 0, "PubKey or PKH already relayed, use claim instead");
-
         { // stack too deep
+        bytes32 outpointTxLE = winner.outpointTxLE;
+        require(outpointTxLE != 0, "PubKey or PKH already relayed, use claim instead");
         bytes32 txId = ValidateSPV.calculateTxId(
             extractUint32(_extra, EXTRA_VERSION),
             _vin,
             _vout,
             extractUint32(_extra, EXTRA_LOCKTIME));
-        require(winner.outpointTxLE == txId, "outpoint tx mismatch");
+        require(outpointTxLE == txId, "outpoint tx mismatch");
         }
 
         { // stack too deep
-        // uint outpointIndex = uint(packed) & 0xFFFFFFFF;
-        bytes memory output = _vout.extractOutputAtIndex(uint(packed) & 0xFFFFFFFF);
+        bytes memory output = _vout.extractOutputAtIndex(winner.outpointIdx);
         bytes20 pkh = extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX));
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
@@ -244,6 +240,10 @@ contract PoR is DataStructure {
             uint newRank = txRank(_blockHash, txId);
             // accept the same rank here to allow re-commiting the same tx to change the input index
             require(newRank <= oldRank, "better tx committed");
+            // clear the old data
+            delete winner.pkh;
+            delete winner.outpointIdx;
+            delete winner.outpointTxLE;
         } else {
             header.minable++; // increase the ref count for new brand
         }
@@ -254,13 +254,12 @@ contract PoR is DataStructure {
         // TODO: manual input PKH/PK position
         if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) { // TODO: compare byte-by-byte
             // redeem script for P2SH-P2WPKH
-            winner.packed = input.slice(32+4+4, 20).toBytes32();
+            winner.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
-            winner.packed = bytes32(getPKH(input.slice(input.length-33-4, 33)));
+            winner.pkh = getPKH(input.slice(input.length-33-4, 33));
         } else {
-            uint outpointIndex = uint(input.extractTxIndexLE().reverseEndianness().toUint32(0));
-            winner.packed = bytes32(outpointIndex);
+            winner.outpointIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
             winner.outpointTxLE = input.extractInputTxIdLE();
         }
 
