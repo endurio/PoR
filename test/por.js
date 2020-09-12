@@ -332,15 +332,18 @@ function extractTxParams(hex, tx) {
   hex = stripTxWitness(hex);
   expect(bitcoinjs.Transaction.fromHex(hex).getId()).to.equal(tx.getId(), 'bad code: stripTxWitness');
 
-  // lazily assume that the last input sequence hex is unique
-  const lastSequence = tx.ins[tx.ins.length-1].sequence.toString(16).pad(8).reverseHex();
-  const pos = hex.lastIndexOf(lastSequence);
-  expect(pos).to.be.at.least(0, `last input sequence hex not found: ${lastSequence}`);
-  const voutStart = pos + lastSequence.length;
+  // lazily assume that the each input sequence hex is unique
+  let pos = 0;
+  for (const input of tx.ins) {
+    const sequence = input.sequence.toString(16).pad(8).reverseHex()
+    pos = hex.indexOf(sequence, pos);
+    expect(pos).to.be.at.least(0, `input sequence not found: ${sequence}`);
+    pos += 8;
+  }
 
   const vinStart = 8; // 2 more bytes for witness flag
-  const vin = hex.substring(vinStart, voutStart);
-  const vout = hex.substring(voutStart, hex.length - 8); // the last 8 bytes is lock time
+  const vin = hex.substring(vinStart, pos);
+  const vout = hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
   return [tx.version, vin, vout, tx.locktime];
 }
 
