@@ -256,7 +256,7 @@ contract PoR is DataStructure {
         if (posPK > 0) {
             // custom P2SH redeem script with compressed PubKey
             winner.pkh = getPKH(input.slice(32+4+1+posPK, 33));
-        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) { // TODO: compare byte-by-byte
+        } else if (input.keccak256Slice(32+4, 4) == 0x54a7e824f373257a8e97cc251e08041c2e042cf00fa33051e7ed3604fe21e846) { // keccak256(hex"17160014")
             // redeem script for P2SH-P2WPKH
             winner.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
