@@ -53,6 +53,8 @@ contract("PoR", accounts => {
         '000000000000009cc9cc0d820f060f3c7dd868162f5fdfba0dfc2050fb0bda68',
         '00000000000000553dea07bc6e4e48a03c02bd46af124307ffb065e7e97e0c76',
         '000000000000024e0d7c55d4fdff24c031544f93df465870b4060f095ae60589',
+        '00000000000001b36df1671322ddb0ca76e9b3566427f1ac63f19b8dcaffd49e',
+        '0000000000000090050d68c86adc68aae0eb38b0b66563e3c4952a9c50d3ee3a',
       ]
 
       for (const hash of commitBlocks) {
@@ -80,6 +82,74 @@ contract("PoR", accounts => {
         // bad block header
         const badHeader = header.slice(0, header.length-8) + '00000000'; // clear the nonce field
         await expectRevert(instPoR.commitBlock('0x'+badHeader), 'insufficient work')
+      }
+    })
+
+    it("x-mine", async() => {
+      let ss;
+      await testXMine('b9abf8270a01d1faa8afe016f4db80e7f3e71a59bcad4238b75a290ebbf37321', {memoLength: ENDURIO.length}, {commitRevert: "insufficient work for multiplied target"});
+      await testXMine('b0804780ba68abd358a0fc66d2a7f29fd1f5b11382cb73806ba8b7e3504460bb', {memoLength: ENDURIO.length}, {commitRevert: "insufficient work for multiplied target"});
+      await testXMine('f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a', {memoLength: ENDURIO.length}, {});
+
+      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: 0}, {claimRevert: "no tx commited"});
+      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length-1}, {claimRevert: "no tx commited"});
+      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length+1}, {claimRevert: "no tx commited"});
+      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length+60}, {commitRevert: "memo length too long"});
+      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length, multiplier: 2}, {});
+      if (ss) await snapshot.revert(ss);
+
+      async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
+        if (ss) await snapshot.revert(ss); ss = await snapshot.take();
+
+        const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+        const blockHash = block.getId();
+  
+        const txData = txs[txHash];
+
+        const extra1 = setMemoLength(extra, memoLength);
+        if (commitRevert) {
+          return expectRevert(
+            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+            commitRevert
+          );
+        }
+        
+        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+        await time.increaseTo(block.timestamp + 60*60);
+        const key = keys.find(k => k.address == txData.miner)
+        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
+        if (claimRevert) {
+          return expectRevert(claimWithPrevTx(txData), claimRevert);
+        }
+
+        let expectedReward = getExpectedReward(block);
+        if (multiplier) {
+          expectedReward *= BigInt(multiplier);
+        }
+        return expectEventClaim(claimWithPrevTx(txData));
+
+        async function expectEventClaim(call) {
+          const receipt = await call;
+          expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
+          expectEvent(receipt, 'Transfer', {
+            from: ZERO_ADDRESS,
+            to: inst.address,
+            value: expectedReward.toString(),
+          });
+          expectEvent(receipt, 'Reward', {
+            memoHash: '0x'+ENDURIO_HASH,
+            memo: '0x'+ENDURIO_HEX,
+            payer: inst.address,
+            payee: txData.miner,
+            amount: expectedReward.toString(),
+          });
+        }
+
+        function setMemoLength(extra, memoLength) {
+          return extra.slice(0, 8*1) +
+            (memoLength).toString(16).pad(8) +
+            extra.slice(8*2);
+        }
       }
     })
 
@@ -369,7 +439,7 @@ function claim(txData) {
 
 function claimWithPrevTx(txData, inputIdx, pkhPos) {
   const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-  const dxHash = tx.ins[inputIdx].hash.reverse().toString('hex');
+  const dxHash = tx.ins[inputIdx || 0].hash.reverse().toString('hex');
 
   // dependency tx
   const dxMeta = txs[dxHash];
@@ -424,7 +494,7 @@ function findMemoOutputIndex(outs, brand) {
     if (script[0].toString(16) === '6a') { // OP_RET
       const len = script[1]
       const memo = script.slice(2, 2+len).toString()
-      expect(memo).to.equal(brand, 'unknown memo')
+      expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
       return i;
     }
   }
