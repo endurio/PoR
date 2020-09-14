@@ -238,11 +238,8 @@ contract("PoR", accounts => {
 
       for (const txHash of commitTxs) {
         const txData = txs[txHash];
-
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-
-        const MAX_TARGET = 1n<<240n;
-        const expectedReward = MAX_TARGET / BigInt('0x'+txData.block);
+        const expectedReward = getExpectedReward(block);
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
@@ -303,11 +300,8 @@ contract("PoR", accounts => {
 
       for (const txHash of commitTxs) {
         const txData = txs[txHash];
-
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-
-        const MAX_TARGET = 1n<<240n;
-        const expectedReward = MAX_TARGET / BigInt('0x'+txData.block);
+        const expectedReward = getExpectedReward(block);
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
@@ -348,6 +342,25 @@ contract("PoR", accounts => {
 
   })
 })
+
+function getExpectedReward(block) {
+  const MAX_TARGET = 1n<<240n;
+  const target = bitsToTarget(block.bits)
+  return MAX_TARGET / target;
+}
+
+function bitsToTarget(bits) {
+  if (bits > 0xffffffff) {
+    throw new Error('"bits" may not be larger than 4 bytes')
+  }
+  var exponent = bits >>> 24
+  if (exponent <= 3) throw new Error('target exponent must be > 3')
+  if (exponent > 32) throw new Error('target exponent must be < 32')
+  var mantissa = bits & 0x007fffff
+  var target = Buffer.alloc(32, 0)
+  target.writeUInt32BE(mantissa << 8, 32 - exponent)
+  return BigInt('0x' + target.toString('hex'));
+}
 
 function claim(txData) {
   const tx = bitcoinjs.Transaction.fromHex(txData.hex);
