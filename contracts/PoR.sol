@@ -45,9 +45,7 @@ contract PoR is DataStructure {
         { // stack too deep
         bytes20 pkh = winner.pkh;
         require(pkh != 0, "PubKey or PKH not relayed, use claimWithPrevTx instead");
-        address miner = miners[pkh];
-        require(miner != address(0x0), "unregistered PKH");
-        _reward(_memoHash, miner, MAX_TARGET / uint(header.target));
+        _reward(_memoHash, pkh, MAX_TARGET / header.target, winner.multiplier);
         }
 
         _cleanUpWinner(_blockHash, _memoHash);
@@ -81,9 +79,7 @@ contract PoR is DataStructure {
         { // stack too deep
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIdx);
         bytes20 pkh = extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX));
-        address miner = miners[pkh];
-        require(miner != address(0x0), "unregistered PKH");
-        _reward(_memoHash, miner, MAX_TARGET / header.target);
+        _reward(_memoHash, pkh, MAX_TARGET / header.target, winner.multiplier);
         }
 
         _cleanUpWinner(_blockHash, _memoHash);
@@ -121,9 +117,15 @@ contract PoR is DataStructure {
      */
     function _reward(
         bytes32 memoHash,
-        address payee,
-        uint rewardRate
+        bytes20 pkh,
+        uint rewardRate,
+        uint multiplier
     ) internal {
+        address payee = miners[pkh];
+        require(payee != address(0x0), "unregistered PKH");
+        if (multiplier > 1) {
+            rewardRate *= multiplier;
+        }
         uint paid = _claimReward(memoHash, rewardRate);
         _payReward(payee, paid);    // reward the miner and upstream in the ref network
         Brand storage brand = brands[memoHash];
@@ -229,25 +231,14 @@ contract PoR is DataStructure {
         require(ValidateSPV.prove(txId, header.merkleRoot, _merkleProof, extractUint32(_extra, EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
         // extract the brand from OP_RETURN
-        Transaction storage winner = getWinner(
-            header,
+        Transaction storage winner = _mustBeNewWinner(
+            _blockHash,
+            txId,
             _vout.extractOutputAtIndex(extractUint32(_extra, EXTRA_OUTPUT_IDX)).extractOpReturnData(),
             extractUint32(_extra, EXTRA_MEMO_LENGTH)
         );
-        // TODO: handle manual miner address in tx memo
 
-        if (winner.id != 0) {
-            uint oldRank = txRank(_blockHash, winner.id);
-            uint newRank = txRank(_blockHash, txId);
-            // accept the same rank here to allow re-commiting the same tx to change the input index
-            require(newRank <= oldRank, "better tx committed");
-            // clear the old data
-            delete winner.pkh;
-            delete winner.outpointIdx;
-            delete winner.outpointTxLE;
-        } else {
-            header.minable++; // increase the ref count for new brand
-        }
+        // TODO: handle manual miner address in tx memo
 
         // store the outpoint to claim the reward later
         bytes memory input = _vin.extractInputAtIndex(extractUint32(_extra, EXTRA_INPUT_IDX));
@@ -270,16 +261,55 @@ contract PoR is DataStructure {
         winner.id = txId;
     }
 
-    function getWinner(
-        Header storage header,
+    function _mustBeNewWinner(
+        bytes32 _blockHash,
+        bytes32 txId,
         bytes memory opret,
         uint memoLength
-    ) internal view returns (Transaction storage) {
-        require(opret.length > memoLength, "no memo in tx opret");
-        bytes memory memo = memoLength > 0 ? opret.slice(0, memoLength) : opret;
-        // unregistered brand allowed here
-        bytes32 memoHash = keccak256(memo);
-        return header.winner[memoHash];
+    ) internal returns (Transaction storage winner) {
+        Header storage header = headers[_blockHash];
+        uint multiplier;
+        if (memoLength == 0) {
+            winner = header.winner[keccak256(opret)];
+        } else {
+            require(opret.length >= memoLength, "memo length too long for opret");
+            winner = header.winner[opret.keccak256Slice(0, memoLength)];
+            if (opret.length > memoLength + 2 &&
+                opret[memoLength]   == ' ' &&
+                opret[memoLength+1] == 'x'
+            ) {
+                multiplier = _readUint(opret, memoLength + 2);
+                if (multiplier > 1) {
+                    require(uint(_blockHash) < header.target / multiplier, "insufficient work for multiplied target");
+                }
+            }
+        }
+
+        if (winner.id != 0) {
+            uint oldRank = txRank(_blockHash, winner.id);
+            uint newRank = txRank(_blockHash, txId);
+            // accept the same rank here to allow re-commiting the same tx to change the input index
+            require(newRank <= oldRank, "better tx committed");
+            // clear the old data
+            delete winner.pkh;
+            delete winner.outpointIdx;
+            delete winner.outpointTxLE;
+        } else {
+            header.minable++; // increase the ref count for new brand
+        }
+
+        // for both new and replacing winner
+        winner.multiplier = multiplier;
+    }
+
+    function _readUint(bytes memory b, uint start) internal pure returns (uint result) {
+        for (uint i = start; i < b.length; i++) {
+            uint c = uint(uint8(b[i]));
+            if (c < 48 || c > 57) {
+                break;
+            }
+            result = result * 10 + (c - 48);
+        }
     }
 
     function extractUint32(bytes32 packed, uint shift) internal pure returns (uint32) {
