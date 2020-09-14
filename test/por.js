@@ -1,3 +1,4 @@
+require('it-each')({ testPerIteration: true });
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
@@ -45,7 +46,111 @@ contract("PoR", accounts => {
     instPoR = await PoR.at(inst.address)
   });
 
-  describe('mine', () => {
+  describe('x-mining', () => {
+    const tests = [{
+      desc: 'x6',
+      tx: 'b9abf8270a01d1faa8afe016f4db80e7f3e71a59bcad4238b75a290ebbf37321',
+      params: {memoLength: ENDURIO.length},
+      expect: {commitRevert: "insufficient work for multiplied target"},
+    }, {
+      desc: 'x136',
+      tx: 'b0804780ba68abd358a0fc66d2a7f29fd1f5b11382cb73806ba8b7e3504460bb',
+      params: {memoLength: ENDURIO.length},
+      expect: {commitRevert: "insufficient work for multiplied target"},
+    }, {
+      desc: '(no x)',
+      tx: 'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
+      params: {memoLength: ENDURIO.length},
+      expect: {},
+    }, {
+      desc: 'x2 with no memoLength',
+      tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
+      params: {memoLength: 0},
+      expect: {claimRevert: "no tx commited"},
+    }, {
+      desc: 'x2 with smaller memoLength',
+      tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
+      params: {memoLength: ENDURIO.length-1},
+      expect: {claimRevert: "no tx commited"},
+    }, {
+      desc: 'x2 with larger memoLength',
+      tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
+      params: {memoLength: ENDURIO.length+1},
+      expect: {claimRevert: "no tx commited"},
+    }, {
+      desc: 'x2 with way larger memoLength',
+      tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
+      params: {memoLength: ENDURIO.length+60},
+      expect: {commitRevert: "memo length too long"},
+    }, {
+      desc: 'x2 with correct memoLength and multiplier = 2',
+      tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
+      params: {memoLength: ENDURIO.length, multiplier: 2},
+      expect: {},
+    }]
+
+    it.each(tests, "%s", ['desc'], async (test, next) => {
+      const ss = await snapshot.take();
+      await testXMine(test.tx, test.params, test.expect);
+      next();
+      await snapshot.revert(ss);
+    })
+
+    async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
+      const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+      const blockHash = block.getId();
+      await instPoR.commitBlock('0x'+blocks[blockHash].substring(0, 160));
+
+      const txData = txs[txHash];
+
+      const extra1 = setMemoLength(extra, memoLength);
+      if (commitRevert) {
+        return expectRevert(
+          instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+          commitRevert
+        );
+      }
+      
+      await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+      await time.increaseTo(block.timestamp + 60*60);
+      const key = keys.find(k => k.address == txData.miner)
+      await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
+      if (claimRevert) {
+        return expectRevert(claimWithPrevTx(txData), claimRevert);
+      }
+
+      let expectedReward = getExpectedReward(block);
+      if (multiplier) {
+        expectedReward *= BigInt(multiplier);
+      }
+      return expectEventClaim(claimWithPrevTx(txData));
+
+      async function expectEventClaim(call) {
+        const receipt = await call;
+        expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
+        expectEvent(receipt, 'Transfer', {
+          from: ZERO_ADDRESS,
+          to: inst.address,
+          value: expectedReward.toString(),
+        });
+        expectEvent(receipt, 'Reward', {
+          memoHash: '0x'+ENDURIO_HASH,
+          memo: '0x'+ENDURIO_HEX,
+          payer: inst.address,
+          payee: txData.miner,
+          amount: expectedReward.toString(),
+        });
+      }
+
+      function setMemoLength(extra, memoLength) {
+        return extra.slice(0, 8*1) +
+          (memoLength).toString(16).pad(8) +
+          extra.slice(8*2);
+      }
+    }
+  })
+
+  describe('sticky', () => {
     it("commitBlock", async() => {
       const commitBlocks = [
         '00000000000002152b5fe8c807c4743bb0633d6e1d70f3cc96d5e542ba4ef07a',
@@ -82,74 +187,6 @@ contract("PoR", accounts => {
         // bad block header
         const badHeader = header.slice(0, header.length-8) + '00000000'; // clear the nonce field
         await expectRevert(instPoR.commitBlock('0x'+badHeader), 'insufficient work')
-      }
-    })
-
-    it("x-mine", async() => {
-      let ss;
-      await testXMine('b9abf8270a01d1faa8afe016f4db80e7f3e71a59bcad4238b75a290ebbf37321', {memoLength: ENDURIO.length}, {commitRevert: "insufficient work for multiplied target"});
-      await testXMine('b0804780ba68abd358a0fc66d2a7f29fd1f5b11382cb73806ba8b7e3504460bb', {memoLength: ENDURIO.length}, {commitRevert: "insufficient work for multiplied target"});
-      await testXMine('f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a', {memoLength: ENDURIO.length}, {});
-
-      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: 0}, {claimRevert: "no tx commited"});
-      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length-1}, {claimRevert: "no tx commited"});
-      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length+1}, {claimRevert: "no tx commited"});
-      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length+60}, {commitRevert: "memo length too long"});
-      await testXMine('302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f', {memoLength: ENDURIO.length, multiplier: 2}, {});
-      if (ss) await snapshot.revert(ss);
-
-      async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
-        if (ss) await snapshot.revert(ss); ss = await snapshot.take();
-
-        const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
-        const blockHash = block.getId();
-  
-        const txData = txs[txHash];
-
-        const extra1 = setMemoLength(extra, memoLength);
-        if (commitRevert) {
-          return expectRevert(
-            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
-            commitRevert
-          );
-        }
-        
-        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
-        await time.increaseTo(block.timestamp + 60*60);
-        const key = keys.find(k => k.address == txData.miner)
-        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
-        if (claimRevert) {
-          return expectRevert(claimWithPrevTx(txData), claimRevert);
-        }
-
-        let expectedReward = getExpectedReward(block);
-        if (multiplier) {
-          expectedReward *= BigInt(multiplier);
-        }
-        return expectEventClaim(claimWithPrevTx(txData));
-
-        async function expectEventClaim(call) {
-          const receipt = await call;
-          expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
-          expectEvent(receipt, 'Transfer', {
-            from: ZERO_ADDRESS,
-            to: inst.address,
-            value: expectedReward.toString(),
-          });
-          expectEvent(receipt, 'Reward', {
-            memoHash: '0x'+ENDURIO_HASH,
-            memo: '0x'+ENDURIO_HEX,
-            payer: inst.address,
-            payee: txData.miner,
-            amount: expectedReward.toString(),
-          });
-        }
-
-        function setMemoLength(extra, memoLength) {
-          return extra.slice(0, 8*1) +
-            (memoLength).toString(16).pad(8) +
-            extra.slice(8*2);
-        }
       }
     })
 
