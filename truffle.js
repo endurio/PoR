@@ -6,9 +6,17 @@ module.exports = {
             network_id: "*",
         },
     },
+    mocha: {
+        reporter: 'eth-gas-reporter',
+        reporterOptions: {
+            showTimeSpent: true,
+            onlyCalledMethods: true,
+            excludeContracts: ["Migrations"],
+        },
+    },
     compilers: {
         solc: {
-            version: '0.6.2'
-        }
-    }
+            version: '0.6.2',
+        },
+    },
 }
