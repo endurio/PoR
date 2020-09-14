@@ -47,7 +47,7 @@ contract PoR is DataStructure {
         require(pkh != 0, "PubKey or PKH not relayed, use claimWithPrevTx instead");
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
-        _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash));
+        _reward(_memoHash, miner, MAX_TARGET / uint(header.target));
         }
 
         _cleanUpWinner(_blockHash, _memoHash);
@@ -83,7 +83,7 @@ contract PoR is DataStructure {
         bytes20 pkh = extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX));
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
-        _reward(_memoHash, miner, MAX_TARGET / uint(_blockHash));
+        _reward(_memoHash, miner, MAX_TARGET / header.target);
         }
 
         _cleanUpWinner(_blockHash, _memoHash);
@@ -304,6 +304,7 @@ contract PoR is DataStructure {
 
         header.merkleRoot = _header.extractMerkleRootLE().toBytes32();
         header.timestamp = timestamp;
+        header.target = target;
         // TODO: emit Block(bytes32(_blockHash))
     }
 
