@@ -52,6 +52,11 @@ contract("PoR", accounts => {
 
   describe('x-mining', () => {
     const tests = [{
+      desc: 'x3',
+      tx: '3ef4453b2cfff417c4c37e3fa2ec0922162262d49ffe5d43f8c010709cfb4b11',
+      params: {memoLength: ENDURIO.length},
+      expect: {commitRevert: "insufficient work for multiplied target"},
+    }, {
       desc: 'x6',
       tx: 'b9abf8270a01d1faa8afe016f4db80e7f3e71a59bcad4238b75a290ebbf37321',
       params: {memoLength: ENDURIO.length},
