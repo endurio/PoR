@@ -136,12 +136,11 @@ contract PoR is DataStructure {
      * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
      */
     function _claimReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
-        Brand storage brand = brands[memoHash];
-        address payer = brand.payer;
-        if (payer == address(this)) {   // endur.io
+        if (memoHash == ENDURIO_MEMO_HASH) {
             _mint(address(this), rewardRate);
             return rewardRate;
         }
+        Brand storage brand = brands[memoHash];
         uint payRate = brand.payRate.committed();
         require(payRate > 0, "brand not active");
         uint amount = util.mulCap(payRate, rewardRate) / 1e18;

@@ -18,11 +18,10 @@ contract BrandMarket is DataStructure, Initializable {
     using suint192 for SUint192;
     using BytesLib for bytes;
 
-    bytes   constant ENDURIO_MEMO               = "endur.io";
-    uint192 constant ENDURIO_PAYRATE            = 1e18;
+    bytes   constant ENDURIO_MEMO   = "endur.io";
 
     function initialize() external override {
-        Brand storage brand = brands[keccak256(ENDURIO_MEMO)];
+        Brand storage brand = brands[ENDURIO_MEMO_HASH];
         require(brand.payer == address(0x0), "already initialized");
         brand.payer = address(this);            // TODO: (this) in delegated call?
         brand.payRate.commit(ENDURIO_PAYRATE);

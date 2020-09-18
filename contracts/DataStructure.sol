@@ -23,6 +23,10 @@ contract DataStructure is ERC20 {
     // BrandMarket //
     mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
 
+    // keccak256("endur.io")
+    bytes32 constant ENDURIO_MEMO_HASH  = 0x022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147;
+    uint192 constant ENDURIO_PAYRATE    = 1e18;
+
     // RefNet //
     mapping(address => Node) nodes;
     address root;                       // owner of the root node, can be changed by owner
