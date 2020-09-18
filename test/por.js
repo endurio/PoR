@@ -10,8 +10,10 @@ const { keys, blocks, txs } = require('./data/por');
 
 const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
+const RefNetwork = artifacts.require("RefNetwork");
 let inst;
 let instPoR;
+let instRefNetwork;
 
 const ENDURIO = 'endur.io';
 const ENDURIO_HEX = '656e6475722e696f000000000000000000000000000000000000000000000000';
@@ -41,9 +43,11 @@ contract("PoR", accounts => {
   before('should our contracts be deployed', async () => {
     inst = await ENDR.deployed();
     expect(inst, 'contract not deployed: ENDR').to.not.be.null
-    expect(await PoR.deployed(), 'contract not deployed: PoR').to.not.be.null
     // proxy implementations
+    expect(await PoR.deployed(), 'contract not deployed: PoR').to.not.be.null
     instPoR = await PoR.at(inst.address)
+    expect(await RefNetwork.deployed(), 'contract not deployed: RefNetwork').to.not.be.null
+    instRefNetwork = await RefNetwork.at(inst.address)
   });
 
   describe('x-mining', () => {
@@ -159,6 +163,8 @@ contract("PoR", accounts => {
         '000000000000024e0d7c55d4fdff24c031544f93df465870b4060f095ae60589',
         '00000000000001b36df1671322ddb0ca76e9b3566427f1ac63f19b8dcaffd49e',
         '0000000000000090050d68c86adc68aae0eb38b0b66563e3c4952a9c50d3ee3a',
+        '000000008d1a77ab3cd49cce9a1c33309d37bc4c26b90bf978ca55c99edacaa3',
+        '000000000000007d83f128bc0efbc7b42e970225bae8c5556bac5f506026e23d',
       ]
 
       for (const hash of commitBlocks) {
@@ -262,6 +268,8 @@ contract("PoR", accounts => {
         'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
         'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
         '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+        '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
+        '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
       for (const txHash of commitTxs) {
         let [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
@@ -334,7 +342,9 @@ contract("PoR", accounts => {
     it("claimWithPrevTx", async() => {
       const commitTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
+        '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
+      const ownMinerTests = {}
 
       { // scope in
         const txHash = commitTxs[0];
@@ -346,6 +356,10 @@ contract("PoR", accounts => {
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
         const expectedReward = getExpectedReward(block);
+        const expectedCommission = expectedReward >> 1n;
+        const expectedMinerReward = expectedReward - expectedCommission;
+        const ownMiner = addressCompare(txData.miner, sender.address) === 0; // we own the miner address
+        ownMinerTests[ownMiner] = true;
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
@@ -366,7 +380,7 @@ contract("PoR", accounts => {
           await snapshot.revert(ss);
         }
         
-        if (txData.miner === sender.address) { // we own the miner address
+        if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
           await expectEventClaim(claimWithPrevTx(txData, 0), DUMMY_ADDRESS);
@@ -377,6 +391,18 @@ contract("PoR", accounts => {
         await expectEventClaim(claimWithPrevTx(txData, 0));
         await expectRevert(claimWithPrevTx(txData, 0), "no such block");
 
+        if (ownMiner) {
+          await expectRevert(instRefNetwork.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
+          expectEvent(await instRefNetwork.withdraw(expectedMinerReward.toString()),
+            'Transfer', {
+              from: inst.address,
+              to: sender.address,
+              value: expectedMinerReward.toString(),
+            },
+          );
+          await expectRevert(instRefNetwork.withdraw(1), "subtraction overflow");
+        }
+
         async function expectEventClaim(call, recipient) {
           const receipt = await call;
           expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
@@ -393,6 +419,9 @@ contract("PoR", accounts => {
           });
         }
       }
+
+      expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
+      expect(ownMinerTests[false], "should test data cover non-miner case").to.be.true;
     })
 
     it("claim", async() => {
@@ -401,12 +430,18 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
         'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
         '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+        '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
       ]
+      const ownMinerTests = {}
 
       for (const txHash of commitTxs) {
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
         const expectedReward = getExpectedReward(block);
+        const expectedCommission = expectedReward >> 1n;
+        const expectedMinerReward = expectedReward - expectedCommission;
+        const ownMiner = addressCompare(txData.miner, sender.address) === 0; // we own the miner address
+        ownMinerTests[ownMiner] = true;
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
@@ -415,7 +450,7 @@ contract("PoR", accounts => {
 
         await expectRevert(claimWithPrevTx(txData, 0), "use claim instead");
 
-        if (txData.miner === sender.address) { // we own the miner address
+        if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
           await expectEventClaim(claim(txData), DUMMY_ADDRESS);
@@ -426,6 +461,18 @@ contract("PoR", accounts => {
         await expectEventClaim(claim(txData));
         await expectRevert(claim(txData), "no such block");
 
+        if (ownMiner) {
+          await expectRevert(instRefNetwork.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
+          expectEvent(await instRefNetwork.withdraw(expectedMinerReward.toString()),
+            'Transfer', {
+              from: inst.address,
+              to: sender.address,
+              value: expectedMinerReward.toString(),
+            },
+          );
+          await expectRevert(instRefNetwork.withdraw(1), "subtraction overflow");
+        }
+
         async function expectEventClaim(call, recipient) {
           const receipt = await call;
           expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
@@ -442,10 +489,27 @@ contract("PoR", accounts => {
           });
         }
       }
+
+      expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
+      expect(ownMinerTests[false], "should test data cover non-miner case").to.be.true;
     })
 
   })
 })
+
+function strip0x(a) {
+  if (a && a.startsWith('0x')) {
+      return a.substring(2)
+  }
+  return a
+}
+
+function addressCompare(a, b) {
+  if (!a) {
+      return !b
+  }
+  return strip0x(a).localeCompare(strip0x(b), undefined, {sensitivity: 'accent'})
+}
 
 function getExpectedReward(block) {
   const MAX_TARGET = 1n<<240n;
@@ -506,15 +570,17 @@ function prepareCommitTx(txHash) {
   expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
   const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
 
-  const outIdx = findMemoOutputIndex(tx.outs, ENDURIO);
+  const [outIdx, memo] = findMemoOutputIndex(tx.outs, ENDURIO);
   expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
+
+  const memoLength = memo.length > ENDURIO.length ? ENDURIO.length : 0;
 
   let extra =
     idx.toString(16).pad(8) +
-    (0).toString(16).pad(8) +
-    '00000000' +  // memo length
+    (memoLength).toString(16).pad(8) +
     '00000000' +  // unused
     '00000000' +  // compressed PK position
+    '00000000' +  // input index
     outIdx.toString(16).pad(8) +
     locktime.toString(16).pad(8).reverseHex() +
     version.toString(16).pad(8).reverseHex();
@@ -529,7 +595,7 @@ function findMemoOutputIndex(outs, brand) {
       const len = script[1]
       const memo = script.slice(2, 2+len).toString()
       expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
-      return i;
+      return [i, memo]
     }
   }
 }
