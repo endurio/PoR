@@ -155,7 +155,7 @@ contract PoR is DataStructure {
             return rewardRate;
         }
         Brand storage brand = brands[memoHash];
-        uint payRate = brand.payRate.committed();
+        uint payRate = brand.payRate.max();
         require(payRate > 0, "brand not active");
         return util.mulCap(payRate, rewardRate) / ENDURIO_PAYRATE;
     }
