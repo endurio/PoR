@@ -45,7 +45,7 @@ contract PoR is DataStructure {
         { // stack too deep
         bytes20 pkh = winner.pkh;
         require(pkh != 0, "PubKey or PKH not relayed, use claimWithPrevTx instead");
-        _reward(_memoHash, pkh, MAX_TARGET / header.target, winner.multiplier);
+        _reward(_memoHash, pkh, winner.reward);
         }
 
         _cleanUpWinner(_blockHash, _memoHash);
@@ -79,7 +79,7 @@ contract PoR is DataStructure {
         { // stack too deep
         bytes memory output = _vout.extractOutputAtIndex(winner.outpointIdx);
         bytes20 pkh = extractPKH(output, extractUint32(_extra, EXTRA_PKH_IDX));
-        _reward(_memoHash, pkh, MAX_TARGET / header.target, winner.multiplier);
+        _reward(_memoHash, pkh, winner.reward);
         }
 
         _cleanUpWinner(_blockHash, _memoHash);
@@ -118,44 +118,46 @@ contract PoR is DataStructure {
     function _reward(
         bytes32 memoHash,
         bytes20 pkh,
-        uint rewardRate,
-        uint multiplier
+        uint amount
     ) internal {
         address payee = miners[pkh];
         require(payee != address(0x0), "unregistered PKH");
-        if (multiplier > 1) {
-            rewardRate *= multiplier;
-        }
-        uint paid = _claimReward(memoHash, rewardRate);
+        uint paid = _claimReward(memoHash, amount);
         _payReward(payee, paid);    // reward the miner and upstream in the ref network
         Brand storage brand = brands[memoHash];
-        emit Reward(memoHash, brand.memo.toBytes32(), brand.payer, payee, rewardRate);
+        emit Reward(memoHash, brand.memo.toBytes32(), brand.payer, payee, paid);
     }
 
     /**
      * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
      */
-    function _claimReward(bytes32 memoHash, uint rewardRate) internal returns (uint) {
+    function _claimReward(bytes32 memoHash, uint amount) internal returns (uint) {
         if (memoHash == ENDURIO_MEMO_HASH) {
-            _mint(address(this), rewardRate);
+            _mint(address(this), amount);
+            return amount;
+        }
+        Brand storage brand = brands[memoHash];
+        uint balance = brand.balance;
+        if (amount < balance) {
+            brand.balance -= amount; // safe
+            return amount;
+        }
+        // exhaust the balance
+        delete brand.balance;
+        // force a brand deactivation
+        brand.payRate.commit(0);
+        emit Deactive(memoHash);
+        return balance;
+    }
+
+    function _getBrandReward(bytes32 memoHash, uint rewardRate) internal view returns (uint) {
+        if (memoHash == ENDURIO_MEMO_HASH) {
             return rewardRate;
         }
         Brand storage brand = brands[memoHash];
         uint payRate = brand.payRate.committed();
         require(payRate > 0, "brand not active");
-        uint amount = util.mulCap(payRate, rewardRate) / 1e18;
-        uint balance = brand.balance;
-        if (amount < balance) {
-            brand.balance -= amount; // safe
-            return amount;
-        } else {
-            // exhaust the balance
-            delete brand.balance;
-            // forced commit a deactivation
-            brand.payRate.commit(0);
-            emit Deactive(memoHash);
-            return balance;
-        }
+        return util.mulCap(payRate, rewardRate) / ENDURIO_PAYRATE;
     }
 
     /**
@@ -238,7 +240,7 @@ contract PoR is DataStructure {
         uint posPK = extractUint32(_extra, EXTRA_PUBKEY_POS);
 
         if (posPK > 0) {
-            // custom P2SH redeem script with compressed PubKey
+            // custom P2SH redeem script with manual compressed PubKey position
             winner.pkh = getPKH(input.slice(32+4+1+posPK, 33));
         } else if (input.keccak256Slice(32+4, 4) == 0x54a7e824f373257a8e97cc251e08041c2e042cf00fa33051e7ed3604fe21e846) { // keccak256(hex"17160014")
             // redeem script for P2SH-P2WPKH
@@ -261,22 +263,26 @@ contract PoR is DataStructure {
         uint memoLength
     ) internal returns (Transaction storage winner) {
         Header storage header = headers[_blockHash];
-        uint multiplier;
+        uint rewardRate = MAX_TARGET / header.target;
+        bytes32 memoHash;
         if (memoLength == 0) {
-            winner = header.winner[keccak256(opret)];
+            memoHash = keccak256(opret);
         } else {
             require(opret.length >= memoLength, "memo length too long for opret");
-            winner = header.winner[opret.keccak256Slice(0, memoLength)];
+            memoHash = opret.keccak256Slice(0, memoLength);
             if (opret.length > memoLength + 2 &&
                 opret[memoLength]   == ' ' &&
                 opret[memoLength+1] == 'x'
             ) {
-                multiplier = _readUint(opret, memoLength + 2);
+                uint multiplier = _readUint(opret, memoLength + 2);
                 if (multiplier > 1) {
                     require(uint(_blockHash) < header.target / multiplier, "insufficient work for multiplied target");
+                    rewardRate *= multiplier;
                 }
             }
         }
+
+        winner = header.winner[memoHash];
 
         if (winner.id != 0) {
             uint oldRank = txRank(_blockHash, winner.id);
@@ -292,7 +298,7 @@ contract PoR is DataStructure {
         }
 
         // for both new and replacing winner
-        winner.multiplier = multiplier;
+        winner.reward = _getBrandReward(memoHash, rewardRate);
     }
 
     function _readUint(bytes memory b, uint start) internal pure returns (uint result) {

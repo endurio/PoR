@@ -164,7 +164,7 @@ struct Header {
 
 struct Transaction {
     bytes32 id;
-    uint    multiplier;
+    uint    reward;
     bytes32 outpointTxLE;   // for P2WPKH
     uint32  outpointIdx;    // for P2WPKH
     bytes20 pkh;            // for P2PKH, P2SH-P2WPKH

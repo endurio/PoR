@@ -66,17 +66,17 @@ contract("PoR", accounts => {
       desc: 'x2 with no memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: 0},
-      expect: {claimRevert: "no tx commited"},
+      expect: {commitRevert: "brand not active"},
     }, {
       desc: 'x2 with smaller memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length-1},
-      expect: {claimRevert: "no tx commited"},
+      expect: {commitRevert: "brand not active"},
     }, {
       desc: 'x2 with larger memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length+1},
-      expect: {claimRevert: "no tx commited"},
+      expect: {commitRevert: "brand not active"},
     }, {
       desc: 'x2 with way larger memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
@@ -110,7 +110,7 @@ contract("PoR", accounts => {
           commitRevert
         );
       }
-      
+
       await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
       await time.increaseTo(block.timestamp + 60*60);
       const key = keys.find(k => k.address == txData.miner)
