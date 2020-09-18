@@ -125,7 +125,7 @@ contract PoR is DataStructure {
         uint paid = _claimReward(memoHash, amount);
         _payReward(payee, paid);    // reward the miner and upstream in the ref network
         Brand storage brand = brands[memoHash];
-        emit Reward(memoHash, brand.memo.toBytes32(), brand.payer, payee, paid);
+        emit Reward(memoHash, brand.payer, payee, paid);
     }
 
     /**

@@ -135,7 +135,6 @@ contract("PoR", accounts => {
         });
         expectEvent(receipt, 'Reward', {
           memoHash: '0x'+ENDURIO_HASH,
-          memo: '0x'+ENDURIO_HEX,
           payer: inst.address,
           payee: txData.miner,
           amount: expectedReward.toString(),
@@ -388,7 +387,6 @@ contract("PoR", accounts => {
           });
           expectEvent(receipt, 'Reward', {
             memoHash: '0x'+ENDURIO_HASH,
-            memo: '0x'+ENDURIO_HEX,
             payer: inst.address,
             payee: recipient || txData.miner,
             amount: expectedReward.toString(),
@@ -438,7 +436,6 @@ contract("PoR", accounts => {
           });
           expectEvent(receipt, 'Reward', {
             memoHash: '0x'+ENDURIO_HASH,
-            memo: '0x'+ENDURIO_HEX,
             payer: inst.address,
             payee: recipient || txData.miner,
             amount: expectedReward.toString(),

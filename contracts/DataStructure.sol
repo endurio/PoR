@@ -55,16 +55,14 @@ contract DataStructure is ERC20 {
 
     // events
     event Active(
-        bytes32 indexed memoHash,
-        bytes32         memo,       // the first 32 bytes of the memo
-        uint            payRate,
+        bytes   indexed memo,
         address indexed payer,
+        uint            payRate,
         uint            balance
     );
     event Deactive(bytes32 indexed memoHash);
     event Reward(
         bytes32 indexed memoHash,
-        bytes32         memo,       // the first 32 bytes of the memo
         address indexed payer,
         address indexed payee,
         uint            amount
@@ -117,7 +115,6 @@ contract DataStructure is ERC20 {
 }
 
 struct Brand {
-    bytes       memo;
     address     payer;
     uint        balance;
     SUint192    payRate; // 18 decimals

@@ -18,14 +18,11 @@ contract BrandMarket is DataStructure, Initializable {
     using suint192 for SUint192;
     using BytesLib for bytes;
 
-    bytes   constant ENDURIO_MEMO   = "endur.io";
-
     function initialize() external override {
         Brand storage brand = brands[ENDURIO_MEMO_HASH];
         require(brand.payer == address(0x0), "already initialized");
         brand.payer = address(this);            // TODO: (this) in delegated call?
         brand.payRate.commit(ENDURIO_PAYRATE);
-        brand.memo = ENDURIO_MEMO;
     }
 
     /**
@@ -40,10 +37,7 @@ contract BrandMarket is DataStructure, Initializable {
         bytes32 memoHash = keccak256(memo);
         Brand storage brand = brands[memoHash];
         address payer = brand.payer;
-        if (payer == address(0x0)) {
-            // new brand
-            brand.memo = memo;
-        } else {
+        if (payer != address(0x0)) {
             require(msg.sender != payer, "re-register not allowed");
             // brand can be overtaken when (1) brand is inactive or (2) new pay rate is better
             require(payRate > brand.payRate.max(), "pay rate too low for overtaking");
@@ -53,21 +47,21 @@ contract BrandMarket is DataStructure, Initializable {
         brand.payer = msg.sender;
         brand.balance = amount;
         _setPayRate(brand, payRate);
-        emit Active(memoHash, memo.toBytes32(), payRate, msg.sender, amount);
+        emit Active(memo, msg.sender, payRate, amount);
     }
 
     /**
      * activate, cancel any on-going deactivation and set the payRate
      */
-    function activate(bytes32 memoHash, uint192 payRate) external {
+    function activate(bytes calldata memo, uint192 payRate) external {
         require(payRate > 0, "zero payrate");
-        Brand storage brand = brands[memoHash];
+        Brand storage brand = brands[keccak256(memo)];
         address payer = brand.payer;
-        require(msg.sender == payer, "current payer only");
+        require(msg.sender == payer, "active payer only");
         uint balance = brand.balance;
-        require(balance >= payRate * ACTIVE_CONDITION_PAYRATE, "not enough deposit for given payrate");
+        require(balance >= payRate * ACTIVE_CONDITION_PAYRATE, "deposited balance too low");
         _setPayRate(brand, payRate);
-        emit Active(memoHash, brand.memo.toBytes32(), payRate, payer, balance);
+        emit Active(memo, payer, payRate, balance);
     }
 
     /**
@@ -75,7 +69,7 @@ contract BrandMarket is DataStructure, Initializable {
      */
     function deactivate(bytes32 memoHash) external {
         Brand storage brand = brands[memoHash];
-        require(msg.sender == brand.payer, "current payer only");
+        require(msg.sender == brand.payer, "active payer only");
         require(brand.payRate.scheduled() > 0, "already pending for deactivation");
         brand.payRate.schedule(0, PAYRATE_DELAY);
         emit Deactive(memoHash);
