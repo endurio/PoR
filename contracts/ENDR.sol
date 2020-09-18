@@ -47,7 +47,7 @@ contract ENDR is DataStructure {
         // generator script: change the contract name in export part
         // (export CONTRACT=BrandMarket; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
         impls[0x231ab4bd] = implBrandMarket;    // register
-        impls[0xbeba8022] = implBrandMarket;    // activate
+        impls[0x1ab5e9a1] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x8e19899e] = implBrandMarket;    // withdraw
         impls[0x1de26e16] = implBrandMarket;    // deposit
