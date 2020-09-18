@@ -146,13 +146,7 @@ contract PoR is DataStructure {
         uint amount = util.mulCap(payRate, rewardRate) / 1e18;
         uint balance = brand.balance;
         if (amount < balance) {
-            balance -= amount; // safe
-            brand.balance = balance;
-            if (balance < payRate * ACTIVE_CONDITION_PAYRATE) {
-                // schedule the deactivation
-                brand.payRate.schedule(0, PAYRATE_DELAY);
-                emit Deactive(memoHash);
-            }
+            brand.balance -= amount; // safe
             return amount;
         } else {
             // exhaust the balance
