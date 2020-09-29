@@ -3,20 +3,18 @@ const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
 const { time, expectRevert, expectEvent } = require('@openzeppelin/test-helpers');
-const hash256 = require('./vendor/hash256');
-const merkle = require('./vendor/merkle');
 const snapshot = require('./lib/snapshot');
 const { keys, blocks, txs } = require('./data/por');
+const utils = require('./lib/utils');
 
 const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
 const RefNetwork = artifacts.require("RefNetwork");
 let inst;
 let instPoR;
-let instRefNetwork;
+let instRN;
 
 const ENDURIO = 'endur.io';
-const ENDURIO_HEX = '656e6475722e696f000000000000000000000000000000000000000000000000';
 const ENDURIO_HASH = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -47,8 +45,13 @@ contract("PoR", accounts => {
     expect(await PoR.deployed(), 'contract not deployed: PoR').to.not.be.null
     instPoR = await PoR.at(inst.address)
     expect(await RefNetwork.deployed(), 'contract not deployed: RefNetwork').to.not.be.null
-    instRefNetwork = await RefNetwork.at(inst.address)
+    instRN = await RefNetwork.at(inst.address)
   });
+
+  before('should utils is properly initialized', async () => {
+    await utils.initialize()
+    expect(utils.inst, 'utils contract instances not initialized').to.not.be.null
+  })
 
   describe('x-mining', () => {
     const tests = [{
@@ -106,7 +109,7 @@ contract("PoR", accounts => {
     })
 
     async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
-      const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+      const [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
       const blockHash = block.getId();
       await instPoR.commitBlock('0x'+blocks[blockHash].substring(0, 160));
 
@@ -125,14 +128,14 @@ contract("PoR", accounts => {
       const key = keys.find(k => k.address == txData.miner)
       await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
       if (claimRevert) {
-        return expectRevert(claimWithPrevTx(txData), claimRevert);
+        return expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), claimRevert);
       }
 
       let expectedReward = getExpectedReward(block);
       if (multiplier) {
         expectedReward *= BigInt(multiplier);
       }
-      return expectEventClaim(claimWithPrevTx(txData));
+      return expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH));
 
       async function expectEventClaim(call) {
         const receipt = await call;
@@ -205,9 +208,9 @@ contract("PoR", accounts => {
       const winingTx = 'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78' // intentional typo
 
       const ss = await snapshot.take();
-      await commitTx(losingTx)
-      await commitTx(winingTx)
-      await expectRevert(commitTx(losingTx), 'better tx committed');
+      await utils.commitTx(losingTx, ENDURIO)
+      await utils.commitTx(winingTx, ENDURIO)
+      await expectRevert(utils.commitTx(losingTx, ENDURIO), 'better tx committed');
       await snapshot.revert(ss);
     })
 
@@ -217,7 +220,7 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
       ]
       for (const txHash of commitTxs) {
-        const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+        const [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         const txData = txs[txHash];
@@ -244,9 +247,9 @@ contract("PoR", accounts => {
           await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
           await time.increaseTo(block.timestamp + 60*60);
           if (claimRevert) {
-            await expectRevert(claim(txData), claimRevert);
+            await expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
           } else {
-            await claim(txData);
+            await utils.claim(txData, ENDURIO_HASH);
           }
           await snapshot.revert(ss);
         }
@@ -277,7 +280,7 @@ contract("PoR", accounts => {
         '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
       for (const txHash of commitTxs) {
-        let [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
+        let [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         await expectRevert(
@@ -354,7 +357,7 @@ contract("PoR", accounts => {
       { // scope in
         const txHash = commitTxs[0];
         const txData = txs[txHash];
-        await expectRevert(claimWithPrevTx(txData, 0), "mining time not over");
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "mining time not over");
       }
 
       for (const txHash of commitTxs) {
@@ -363,7 +366,7 @@ contract("PoR", accounts => {
         const expectedReward = getExpectedReward(block);
         const expectedCommission = expectedReward >> 1n;
         const expectedMinerReward = expectedReward - expectedCommission;
-        const ownMiner = addressCompare(txData.miner, sender.address) === 0; // we own the miner address
+        const ownMiner = utils.addressCompare(txData.miner, sender.address) === 0; // we own the miner address
         ownMinerTests[ownMiner] = true;
 
         const targetTimestamp = block.timestamp + 60*60;
@@ -371,41 +374,41 @@ contract("PoR", accounts => {
           await time.increaseTo(targetTimestamp);
         }
 
-        await expectRevert(claim(txData), "use claimWithPrevTx instead");
+        await expectRevert(utils.claim(txData, ENDURIO_HASH), "use claimWithPrevTx instead");
 
         // test the manual PKH position in output script
         { // snapshot scope
           const ss = await snapshot.take();
           // PKH never be in the start of the output script
-          await expectRevert(claimWithPrevTx(txData, 0, 10), "unregistered PKH");
+          await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0, 10), "unregistered PKH");
 
           // PKH position in output script is different between segwit and legacy
           const isSegWit = txData.hex.slice(8, 10) === '00';
-          await expectEventClaim(claimWithPrevTx(txData, 0, isSegWit ? 11 : 12));
+          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0, isSegWit ? 11 : 12));
           await snapshot.revert(ss);
         }
         
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(claimWithPrevTx(txData, 0), DUMMY_ADDRESS);
+          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
         // auto detect PKH position
-        await expectEventClaim(claimWithPrevTx(txData, 0));
-        await expectRevert(claimWithPrevTx(txData, 0), "no such block");
+        await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0));
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "no such block");
 
         if (ownMiner) {
-          await expectRevert(instRefNetwork.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
-          expectEvent(await instRefNetwork.withdraw(expectedMinerReward.toString()),
+          await expectRevert(instRN.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
+          expectEvent(await instRN.withdraw(expectedMinerReward.toString()),
             'Transfer', {
               from: inst.address,
               to: sender.address,
               value: expectedMinerReward.toString(),
             },
           );
-          await expectRevert(instRefNetwork.withdraw(1), "subtraction overflow");
+          await expectRevert(instRN.withdraw(1), "subtraction overflow");
         }
 
         async function expectEventClaim(call, recipient) {
@@ -445,7 +448,7 @@ contract("PoR", accounts => {
         const expectedReward = getExpectedReward(block);
         const expectedCommission = expectedReward >> 1n;
         const expectedMinerReward = expectedReward - expectedCommission;
-        const ownMiner = addressCompare(txData.miner, sender.address) === 0; // we own the miner address
+        const ownMiner = utils.addressCompare(txData.miner, sender.address) === 0; // we own the miner address
         ownMinerTests[ownMiner] = true;
 
         const targetTimestamp = block.timestamp + 60*60;
@@ -453,29 +456,29 @@ contract("PoR", accounts => {
           await time.increaseTo(targetTimestamp);
         }
 
-        await expectRevert(claimWithPrevTx(txData, 0), "use claim instead");
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "use claim instead");
 
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(claim(txData), DUMMY_ADDRESS);
+          await expectEventClaim(utils.claim(txData, ENDURIO_HASH), DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
         // auto detect PKH position
-        await expectEventClaim(claim(txData));
-        await expectRevert(claim(txData), "no such block");
+        await expectEventClaim(utils.claim(txData, ENDURIO_HASH));
+        await expectRevert(utils.claim(txData, ENDURIO_HASH), "no such block");
 
         if (ownMiner) {
-          await expectRevert(instRefNetwork.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
-          expectEvent(await instRefNetwork.withdraw(expectedMinerReward.toString()),
+          await expectRevert(instRN.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
+          expectEvent(await instRN.withdraw(expectedMinerReward.toString()),
             'Transfer', {
               from: inst.address,
               to: sender.address,
               value: expectedMinerReward.toString(),
             },
           );
-          await expectRevert(instRefNetwork.withdraw(1), "subtraction overflow");
+          await expectRevert(instRN.withdraw(1), "subtraction overflow");
         }
 
         async function expectEventClaim(call, recipient) {
@@ -502,20 +505,6 @@ contract("PoR", accounts => {
   })
 })
 
-function strip0x(a) {
-  if (a && a.startsWith('0x')) {
-      return a.substring(2)
-  }
-  return a
-}
-
-function addressCompare(a, b) {
-  if (!a) {
-      return !b
-  }
-  return strip0x(a).localeCompare(strip0x(b), undefined, {sensitivity: 'accent'})
-}
-
 function getExpectedReward(block) {
   const MAX_TARGET = 1n<<240n;
   const target = bitsToTarget(block.bits)
@@ -533,152 +522,4 @@ function bitsToTarget(bits) {
   var target = Buffer.alloc(32, 0)
   target.writeUInt32BE(mantissa << 8, 32 - exponent)
   return BigInt('0x' + target.toString('hex'));
-}
-
-function claim(txData) {
-  const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-  return instPoR.claim('0x'+txData.block, '0x'+ENDURIO_HASH);
-}
-
-function claimWithPrevTx(txData, inputIdx, pkhPos) {
-  const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-  const dxHash = tx.ins[inputIdx || 0].hash.reverse().toString('hex');
-
-  // dependency tx
-  const dxMeta = txs[dxHash];
-  const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
-
-  extra =
-    locktime.toString(16).pad(8).reverseHex() +
-    version.toString(16).pad(8).reverseHex();
-
-  if (pkhPos) {
-    extra = pkhPos.toString(16).pad(8) + extra
-  }
-  extra = extra.pad(64);
-
-  return instPoR.claimWithPrevTx('0x'+txData.block, '0x'+ENDURIO_HASH, '0x'+vin, '0x'+vout, '0x'+extra);
-}
-
-function commitTx(txHash) {
-  const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
-  const blockHash = block.getId();
-  return instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
-}
-
-function prepareCommitTx(txHash) {
-  const txData = txs[txHash];
-  const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-  const [proofs, idx] = getMerkleProof(block, txHash);
-
-  const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-  expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
-  const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
-
-  const [outIdx, memo] = findMemoOutputIndex(tx.outs, ENDURIO);
-  expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
-
-  const memoLength = memo.length > ENDURIO.length ? ENDURIO.length : 0;
-
-  let extra =
-    idx.toString(16).pad(8) +
-    (memoLength).toString(16).pad(8) +
-    '00000000' +  // unused
-    '00000000' +  // compressed PK position
-    '00000000' +  // input index
-    outIdx.toString(16).pad(8) +
-    locktime.toString(16).pad(8).reverseHex() +
-    version.toString(16).pad(8).reverseHex();
-
-  return [block, proofs, extra, vin, vout];
-}
-
-function findMemoOutputIndex(outs, brand) {
-  for(let i = 0; i < outs.length; ++i) {
-    const script = outs[i].script;
-    if (script[0].toString(16) === '6a') { // OP_RET
-      const len = script[1]
-      const memo = script.slice(2, 2+len).toString()
-      expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
-      return [i, memo]
-    }
-  }
-}
-
-if (!String.prototype.pad) {
-  Object.defineProperty(String.prototype, 'pad', {
-    enumerable: false,
-    value: function(n) {
-      if (this.length >= n) {
-        return this;
-      }
-      return '0'.repeat(n-this.length) + this;
-    },
-  });
-}
-
-if (!String.prototype.reverseHex) {
-  Object.defineProperty(String.prototype, 'reverseHex', {
-    enumerable: false,
-    value: function() {
-      const s = this.replace(/^(.(..)*)$/, "0$1");  // add a leading zero if needed
-      const a = s.match(/../g);                     // split number in groups of two
-      a.reverse();                                  // reverse the groups
-      return a.join('');                            // join the groups back together
-    },
-  });
-}
-
-function stripTxWitness(hex) {
-  tx = bitcoinjs.Transaction.fromHex(hex);
-  if (!tx.hasWitnesses()) {
-    return hex;
-  }
-  for (let i = 0; i < tx.ins.length; ++i) {
-    tx.setWitness(i, []);
-  }
-  return tx.toHex();
-}
-
-function extractTxParams(hex, tx) {
-  tx = tx || bitcoinjs.Transaction.fromHex(hex);
-  hex = stripTxWitness(hex);
-  expect(bitcoinjs.Transaction.fromHex(hex).getId()).to.equal(tx.getId(), 'bad code: stripTxWitness');
-
-  // lazily assume that the each input sequence hex is unique
-  let pos = 0;
-  for (const input of tx.ins) {
-    const sequence = input.sequence.toString(16).pad(8).reverseHex()
-    pos = hex.indexOf(sequence, pos);
-    expect(pos).to.be.at.least(0, `input sequence not found: ${sequence}`);
-    pos += 8;
-  }
-
-  const vinStart = 8; // 2 more bytes for witness flag
-  const vin = hex.substring(vinStart, pos);
-  const vout = hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
-  return [tx.version, vin, vout, tx.locktime];
-}
-
-function getMerkleProof(block, txid) {
-  let index = -1;
-  const txs = [];
-  for (const [i, tx] of Object.entries(block.transactions)) {
-    if (tx.getId() === txid) { index = i >>> 0; } // cast to uint from string
-    txs.push(Buffer.from(tx.getId(), 'hex').reverse());
-  }
-
-  expect(index).to.be.at.least(0, 'tx not found');
-
-  const [root] = merkle.createRoot(hash256, txs.slice());
-  expect(block.merkleRoot.toString('hex')).to.equal(root.toString('hex'), 'merkle root mismatch');
-
-  const branch = merkle.createBranch(hash256, index, txs.slice());
-
-  let proof = '';
-  for (const hash of branch) {
-    proof += hash.toString('hex');
-  }
-
-  return [proof, index];
 }
