@@ -164,6 +164,6 @@ struct Transaction {
     uint    reward;
     address payer;
     bytes32 outpointTxLE;   // for P2WPKH
-    uint32  outpointIdx;    // for P2WPKH
+    uint32  outpointIdx;    // for P2WPKH               TODO: pack this with other field
     bytes20 pkh;            // for P2PKH, P2SH-P2WPKH
 }
