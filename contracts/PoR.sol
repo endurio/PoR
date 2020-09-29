@@ -152,21 +152,6 @@ contract PoR is DataStructure {
         return balance;
     }
 
-    function _getBrandReward(
-        bytes32 memoHash,
-        address payer,
-        uint    rewardRate
-    ) internal view returns (uint) {
-        if (payer == address(0x0)) {
-            require(memoHash == ENDURIO_MEMO_HASH, "unrecognized root brand");
-            return rewardRate;
-        }
-        Brand storage brand = brands[memoHash][payer];
-        uint payRate = brand.payRate;
-        require(payRate > 0, "brand not active");
-        return util.mulCap(payRate, rewardRate) / ENDURIO_PAYRATE;
-    }
-
     /**
      * reward the miner an amount of token, and commit another amount of token to the upstream referal
      *
@@ -234,7 +219,7 @@ contract PoR is DataStructure {
         require(ValidateSPV.prove(txId, header.merkleRoot, merkleProof, _extractUint32(extra, EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
         // extract the brand from OP_RETURN
-        Transaction storage winner = _mustBeNewWinner(
+        Transaction storage winner = _processTxMemo(
             blockHash,
             txId,
             vout.extractOutputAtIndex(_extractUint32(extra, EXTRA_OUTPUT_IDX)).extractOpReturnData(),
@@ -265,24 +250,7 @@ contract PoR is DataStructure {
         winner.id = txId;
     }
 
-    function _extractOpRet(
-        bytes   memory  opret,
-        uint            memoLength
-    ) internal pure returns (bytes32 memoHash, uint multiplier) {
-        if (memoLength == 0) {
-            return (keccak256(opret), 1);
-        }
-        require(opret.length >= memoLength, "OOB: memo length");
-        memoHash = opret.keccak256Slice(0, memoLength);
-        if (opret.length > memoLength + 2 &&
-            opret[memoLength]   == ' ' &&
-            opret[memoLength+1] == 'x'
-        ) {
-            multiplier = _readUint(opret, memoLength + 2);
-        }
-    }
-
-    function _mustBeNewWinner(
+    function _processTxMemo(
         bytes32         blockHash,
         bytes32         txId,
         bytes   memory  opret,
@@ -291,7 +259,7 @@ contract PoR is DataStructure {
     ) internal returns (Transaction storage winner) {
         Header storage header = headers[blockHash];
         uint rewardRate = MAX_TARGET / header.target;
-        (bytes32 memoHash, uint multiplier) = _extractOpRet(opret, memoLength);
+        (bytes32 memoHash, uint multiplier) = _processMemo(opret, memoLength);
         if (multiplier > 1) {
             require(uint(blockHash) < header.target / multiplier, "insufficient work for multiplied target");
             rewardRate *= multiplier;
@@ -315,6 +283,38 @@ contract PoR is DataStructure {
         // for both new and replacing winner
         winner.reward = _getBrandReward(memoHash, payer, rewardRate);
         winner.payer = payer;
+    }
+
+    function _processMemo(
+        bytes   memory  opret,
+        uint            memoLength
+    ) internal pure returns (bytes32 memoHash, uint multiplier) {
+        if (memoLength == 0) {
+            return (keccak256(opret), 1);
+        }
+        require(opret.length >= memoLength, "OOB: memo length");
+        memoHash = opret.keccak256Slice(0, memoLength);
+        if (opret.length > memoLength + 2 &&
+            opret[memoLength]   == ' ' &&
+            opret[memoLength+1] == 'x'
+        ) {
+            multiplier = _readUint(opret, memoLength + 2);
+        }
+    }
+
+    function _getBrandReward(
+        bytes32 memoHash,
+        address payer,
+        uint    rewardRate
+    ) internal view returns (uint) {
+        if (payer == address(0x0)) {
+            require(memoHash == ENDURIO_MEMO_HASH, "unrecognized root brand");
+            return rewardRate;
+        }
+        Brand storage brand = brands[memoHash][payer];
+        uint payRate = brand.payRate;
+        require(payRate > 0, "brand not active");
+        return util.mulCap(payRate, rewardRate) / ENDURIO_PAYRATE;
     }
 
     function _readUint(bytes memory b, uint start) internal pure returns (uint result) {
