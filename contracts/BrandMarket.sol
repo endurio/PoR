@@ -3,10 +3,8 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
-import "./lib/util.sol";
-import "./lib/suint192.sol";
+import "./lib/time.sol";
 import "./DataStructure.sol";
-import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import "./interface/Initializable.sol";
 
 /**
@@ -15,101 +13,57 @@ import "./interface/Initializable.sol";
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract BrandMarket is DataStructure, Initializable {
-    using suint192 for SUint192;
-    using BytesLib for bytes;
 
     function initialize() external override {
-        Brand storage brand = brands[ENDURIO_MEMO_HASH];
-        require(brand.payer == address(0x0), "already initialized");
-        brand.payer = address(this);            // TODO: (this) in delegated call?
-        brand.payRate.commit(ENDURIO_PAYRATE);
+        Brand storage brand = brands[ENDURIO_MEMO_HASH][address(0x0)];
+        require(brand.payRate == 0, "already initialized");
+        brand.payRate = ENDURIO_PAYRATE;
     }
 
     /**
-     * Register/take over, deposit and active a brand
+     * fund and active or power-up a brand campaign
      */
-    function register(
+    function activate(
         bytes   calldata memo,
-        uint    amount,         // initial deposit
-        uint192 payRate         // zero to disable auto activation
+        uint    fund,           // ENDR to deposit
+        uint    payRate,
+        uint    duration        // (optional) default duration of 2 weeks
     ) external {
-        require(amount >= payRate * ACTIVE_CONDITION_PAYRATE, "not enough deposit for given payrate");
         bytes32 memoHash = keccak256(memo);
-        Brand storage brand = brands[memoHash];
-        address payer = brand.payer;
-        if (payer != address(0x0)) {
-            require(msg.sender != payer, "re-register not allowed");
-            // brand can be overtaken when (1) brand is inactive or (2) new pay rate is better
-            require(payRate > brand.payRate.max(), "pay rate too low for overtaking");
-            _transfer(address(this), payer, brand.balance); // refund the old payer
+        Brand storage brand = brands[memoHash][msg.sender];
+        if (time.reach(brand.expiration)) {
+            // new campaign
+            require(payRate > 0, "!payRate");
+            require(fund > 0, "!fund");
+            brand.payRate = payRate;
+            brand.expiration = time.next(duration > 0 ? duration : 2 weeks);
+        } else {
+            // power-up old campaign
+            if (payRate > 0) {
+                require(payRate > brand.payRate, "!expired: increasing pay rate only");
+                brand.payRate = payRate;
+            }
+            if (duration > 0) {
+                uint newExpiration = time.next(duration);
+                require(newExpiration > brand.expiration, "!expired: extending expiration only");
+                brand.expiration = newExpiration;
+            }
         }
-        _transfer(msg.sender, address(this), amount);
-        brand.payer = msg.sender;
-        brand.balance = amount;
-        _setPayRate(brand, payRate);
-        emit Active(memo, msg.sender, payRate, amount);
+        if (fund > 0) {
+            _transfer(msg.sender, address(this), fund);
+            brand.balance += fund;  // overflowable but unexploitable
+        }
+        emit Active(memo, msg.sender, payRate, brand.balance, brand.expiration);
     }
 
     /**
-     * activate, cancel any on-going deactivation and set the payRate
-     */
-    function activate(bytes calldata memo, uint192 payRate) external {
-        require(payRate > 0, "zero payrate");
-        Brand storage brand = brands[keccak256(memo)];
-        address payer = brand.payer;
-        require(msg.sender == payer, "active payer only");
-        uint balance = brand.balance;
-        require(balance >= payRate * ACTIVE_CONDITION_PAYRATE, "deposited balance too low");
-        _setPayRate(brand, payRate);
-        emit Active(memo, payer, payRate, balance);
-    }
-
-    /**
-     * request to deactivate the brand
+     * deactivate the campaign and withdraw any remaining fund
      */
     function deactivate(bytes32 memoHash) external {
-        Brand storage brand = brands[memoHash];
-        require(msg.sender == brand.payer, "active payer only");
-        require(brand.payRate.scheduled() > 0, "already pending for deactivation");
-        brand.payRate.schedule(0, PAYRATE_DELAY);
-        emit Deactive(memoHash);
-    }
-
-    /**
-     * Changing the payrate requires a delay of 40 mins.
-     */
-    function _setPayRate(Brand storage brand, uint192 payRate) internal {
-        brand.payRate.schedule(payRate, PAYRATE_DELAY);
-    }
-
-    function withdraw(bytes32 memoHash) external {
-        Brand storage brand = brands[memoHash];
-        address payer = brand.payer;
-        require(msg.sender == payer, "current payer only");
-        require(brand.payRate.committed() == 0, "brand not deactivated");
-        uint balance = brand.balance;
-        require(balance > 0, "empty balance");
-        _transfer(address(this), payer, balance);
-    }
-
-    /**
-     * deposit to a brand regardless of its payer
-     */
-    function deposit(bytes32 memoHash, uint amount) external {
-        _deposit(brands[memoHash], amount);
-    }
-
-    /**
-     * deposit to a brand with given payer
-     */
-    function deposit(bytes32 memoHash, address payer, uint amount) external {
-        Brand storage brand = brands[memoHash];
-        require(brand.payer == payer, "payer mismatches");
-        _deposit(brand, amount);
-    }
-
-    function _deposit(Brand storage brand, uint amount) internal {
-        _transfer(msg.sender, address(this), amount);
-        brand.balance += amount;
+        Brand storage brand = brands[memoHash][msg.sender];
+        require(time.reach(brand.expiration), "!expired");
+        _transfer(address(this), msg.sender, brand.balance);
+        delete brands[memoHash][msg.sender];
+        emit Deactive(memoHash, msg.sender);
     }
 }

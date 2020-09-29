@@ -21,7 +21,7 @@ contract DataStructure is ERC20 {
     address owner;                      // responsible for contract upgrade
 
     // BrandMarket //
-    mapping(bytes32 => Brand) internal brands; // keccak(brand.memo) => Brand
+    mapping(bytes32 => mapping(address => Brand)) internal brands;
 
     bytes32 constant ENDURIO_MEMO_HASH  = keccak256("endur.io");
     uint192 constant ENDURIO_PAYRATE    = 1e18;
@@ -49,17 +49,19 @@ contract DataStructure is ERC20 {
     // constant
     address constant ROOT_ADDRESS               = address(0x0);
     address constant ROOT_PARENT                = address(0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF);
-    uint    constant PAYRATE_DELAY              = 40 minutes;    // decreasing pay rate or deactivating requires a delay
-    uint    constant ACTIVE_CONDITION_PAYRATE   = 4;  // 4 times payment
 
     // events
     event Active(
         bytes   indexed memo,
         address indexed payer,
         uint            payRate,
-        uint            balance
+        uint            balance,
+        uint            expiration
     );
-    event Deactive(bytes32 indexed memoHash);
+    event Deactive(
+        bytes32 indexed memoHash,
+        address indexed payer
+    );
     event Reward(
         bytes32 indexed memoHash,
         address indexed payer,
@@ -71,7 +73,6 @@ contract DataStructure is ERC20 {
     using rb for Balance;
     using tadr for TAddress;
     using libnode for Node;
-    using suint192 for SUint192;
 
     constructor() public ERC20("Endurio", "ENDR") {
     }
@@ -114,9 +115,9 @@ contract DataStructure is ERC20 {
 }
 
 struct Brand {
-    address     payer;
-    uint        balance;
-    SUint192    payRate; // 18 decimals
+    uint    balance;
+    uint    payRate;    // 18 decimals
+    uint    expiration;
 }
 
 struct Node {
@@ -161,6 +162,7 @@ struct Header {
 struct Transaction {
     bytes32 id;
     uint    reward;
+    address payer;
     bytes32 outpointTxLE;   // for P2WPKH
     uint32  outpointIdx;    // for P2WPKH
     bytes20 pkh;            // for P2PKH, P2SH-P2WPKH

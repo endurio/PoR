@@ -75,22 +75,22 @@ contract("PoR", accounts => {
       desc: 'x2 with no memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: 0},
-      expect: {commitRevert: "brand not active"},
+      expect: {commitRevert: "unrecognized root brand"},
     }, {
       desc: 'x2 with smaller memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length-1},
-      expect: {commitRevert: "brand not active"},
+      expect: {commitRevert: "unrecognized root brand"},
     }, {
       desc: 'x2 with larger memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length+1},
-      expect: {commitRevert: "brand not active"},
+      expect: {commitRevert: "unrecognized root brand"},
     }, {
       desc: 'x2 with way larger memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length+60},
-      expect: {commitRevert: "memo length too long"},
+      expect: {commitRevert: "OOB: memo length"},
     }, {
       desc: 'x2 with correct memoLength and multiplier = 2',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
@@ -115,12 +115,12 @@ contract("PoR", accounts => {
       const extra1 = setMemoLength(extra, memoLength);
       if (commitRevert) {
         return expectRevert(
-          instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+          instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
           commitRevert
         );
       }
 
-      await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+      await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
       await time.increaseTo(block.timestamp + 60*60);
       const key = keys.find(k => k.address == txData.miner)
       await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
@@ -144,7 +144,7 @@ contract("PoR", accounts => {
         });
         expectEvent(receipt, 'Reward', {
           memoHash: '0x'+ENDURIO_HASH,
-          payer: inst.address,
+          payer: ZERO_ADDRESS,
           payee: txData.miner,
           amount: expectedReward.toString(),
         });
@@ -236,12 +236,12 @@ contract("PoR", accounts => {
           const extra1 = setPubKeyPos(extra, posPK);
           if (commitRevert) {
             return expectRevert(
-              instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+              instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
               commitRevert
             );
           }
           const ss = await snapshot.take();
-          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
           await time.increaseTo(block.timestamp + 60*60);
           if (claimRevert) {
             await expectRevert(claim(txData), claimRevert);
@@ -281,19 +281,19 @@ contract("PoR", accounts => {
         const blockHash = block.getId();
 
         await expectRevert(
-          instPoR.commitTx('0x'+blockHash.reverseHex(), '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout),
+          instPoR.commitTx('0x'+blockHash.reverseHex(), '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
           'no such block',
           );
 
         await expectRevert(
-          instPoR.commitTx('0x'+blockHash, '0x'+proofs.slice(64), '0x'+extra, '0x'+vin, '0x'+vout),
+          instPoR.commitTx('0x'+blockHash, '0x'+proofs.slice(64), '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
           'invalid merkle proof',
         );
 
         { // snapshot scope
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
-          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
           await snapshot.revert(ss);
         }
 
@@ -301,7 +301,7 @@ contract("PoR", accounts => {
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60)
           await expectRevert(
-            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout),
+            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
             'mining time over',
           );
           await snapshot.revert(ss);
@@ -312,15 +312,15 @@ contract("PoR", accounts => {
           extra.slice(40);
 
         if (tx.ins.length > 1) {
-          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout);
+          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
         } else {
           await expectRevert(
-            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout),
+            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
             'Vin read overrun',
           );
         }
 
-        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
       }
     })
 
@@ -418,7 +418,7 @@ contract("PoR", accounts => {
           });
           expectEvent(receipt, 'Reward', {
             memoHash: '0x'+ENDURIO_HASH,
-            payer: inst.address,
+            payer: ZERO_ADDRESS,
             payee: recipient || txData.miner,
             amount: expectedReward.toString(),
           });
@@ -488,7 +488,7 @@ contract("PoR", accounts => {
           });
           expectEvent(receipt, 'Reward', {
             memoHash: '0x'+ENDURIO_HASH,
-            payer: inst.address,
+            payer: ZERO_ADDRESS,
             payee: recipient || txData.miner,
             amount: expectedReward.toString(),
           });
@@ -563,7 +563,7 @@ function claimWithPrevTx(txData, inputIdx, pkhPos) {
 function commitTx(txHash) {
   const [block, proofs, extra, vin, vout] = prepareCommitTx(txHash);
   const blockHash = block.getId();
-  return instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout);
+  return instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
 }
 
 function prepareCommitTx(txHash) {
