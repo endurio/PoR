@@ -136,8 +136,7 @@ contract PoR is DataStructure {
         address payer,
         uint    amount
     ) internal returns (uint) {
-        if (payer == address(0x0)) {
-            require(memoHash == ENDURIO_MEMO_HASH, "unrecognized root brand");
+        if (memoHash == ENDURIO_MEMO_HASH) {
             _mint(address(this), amount);
             return amount;
         }
@@ -307,8 +306,7 @@ contract PoR is DataStructure {
         address payer,
         uint    rewardRate
     ) internal view returns (uint) {
-        if (payer == address(0x0)) {
-            require(memoHash == ENDURIO_MEMO_HASH, "unrecognized root brand");
+        if (memoHash == ENDURIO_MEMO_HASH) {
             return rewardRate;
         }
         Brand storage brand = brands[memoHash][payer];
