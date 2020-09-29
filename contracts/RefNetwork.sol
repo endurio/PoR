@@ -146,7 +146,7 @@ contract RefNetwork is DataStructure, Initializable {
             uint rootC = util.addCap(epochTotalRootC, commission);
             // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
             if (time.reach(epochEnd)) {
-                adaptGlobalLevelStep(rootC);
+                _adaptGlobalLevelStep(rootC);
             } else {
                 epochTotalRootC = rootC;
             }
@@ -184,7 +184,7 @@ contract RefNetwork is DataStructure, Initializable {
     /**
      * @dev make sure this and _pay can never revert for root node
      */
-    function adaptGlobalLevelStep(uint rootC) internal {
+    function _adaptGlobalLevelStep(uint rootC) internal {
         uint S = globalLevelStep;
         assert(S > 0);
         uint targetS = _newTargetS(rootC, S, epochTotalReward);
