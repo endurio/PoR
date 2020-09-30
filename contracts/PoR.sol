@@ -163,7 +163,7 @@ contract PoR is DataStructure {
         }
         assert(node.exists());
         uint commission = amount >> 1;
-        node.balance.add(amount - commission); // safe
+        _transfer(address(this), miner, amount - commission); // safe
         _payUpstream(node, commission);
         epochTotalReward = util.addCap(epochTotalReward, amount);
     }
