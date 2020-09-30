@@ -57,6 +57,15 @@ library rb {
         return value;
     }
 
+    /**
+     * empty the balance and return the value
+     */
+    function empty(Balance storage b) internal returns (uint value) {
+        value = peek(b);
+        delete b.value;
+        // no need to touch the timestamp
+    }
+
     function add(Balance storage b, uint value) internal {
         b.value = SafeMath.add(peek(b), value);
         b.lastTouch = time.blockTimestamp();

@@ -71,6 +71,12 @@ contract RefNetwork is DataStructure, Initializable {
         _transfer(address(this), msg.sender, amount);
     }
 
+    function empty() external {
+        Node storage node = nodes[msg.sender];
+        uint balance = node.balance.empty();
+        _transfer(address(this), msg.sender, balance);
+    }
+
     function setRent(uint rent) external {
         Node storage node = nodes[msg.sender];
         require(node.exists(), "no such node");
@@ -79,10 +85,21 @@ contract RefNetwork is DataStructure, Initializable {
         node.balance.setRate(rent);
     }
 
-    function getRent() external view returns (uint) {
-        Node storage node = nodes[msg.sender];
-        require(node.exists(), "no such node");
-        return node.balance.getRate();
+    function getNodeDetails(address noder) external view returns (
+        uint    balance,
+        uint    rent,
+        uint    commission,
+        address parent,
+        uint    parentMTime,
+        address prevParent,
+        uint    prevParentMTime
+    ) {
+        Node storage node = nodes[noder];
+        balance = node.balance.peek();
+        rent = node.balance.getRate();
+        commission = node.commission;
+        (parent, parentMTime) = node.parent.extract();
+        (prevParent, prevParentMTime) = node.parent.extractPrevious();
     }
 
     /**

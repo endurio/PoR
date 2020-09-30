@@ -66,4 +66,16 @@ contract BrandMarket is DataStructure, Initializable {
         delete brands[memoHash][msg.sender];
         emit Deactive(memoHash, msg.sender);
     }
+
+    function getCampaignDetails(
+        bytes32 memoHash,
+        address payer
+    ) external view returns (
+        uint balance,
+        uint payRate,
+        uint expiration
+    ) {
+        Brand storage brand = brands[memoHash][payer];
+        return (brand.balance, brand.payRate, brand.expiration);
+    }
 }

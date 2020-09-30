@@ -18,6 +18,8 @@ struct TAddress {
  * @dev address and maturedTime is packed into an bytes32 to optimize for storage access.
  */
 library tadr {
+    using tadr for TAddress;
+
     uint96 public constant MAX_UINT96 = 0xFFFFFFFFFFFFFFFFFFFFFFFF;
 
     function exists(TAddress storage ta) internal view returns (bool) {
@@ -40,6 +42,11 @@ library tadr {
         return (address(bytes20(current)), uint96(uint(current)));
     }
 
+    function extractPrevious(TAddress storage ta) internal view returns (address, uint96) {
+        bytes32 previous = ta.previous;
+        return (address(bytes20(previous)), uint96(uint(previous)));
+    }
+
     /**
      * Split the logic of extract and maturingRate out for optimization.
      * This function is only called when block.timestamp < currentMTime (a.k.a unmatured)
@@ -48,11 +55,10 @@ library tadr {
         internal view
         returns (uint dividend, uint divisor, address prevAddress)
     {
-        bytes32 prev = ta.previous;
-        uint prevMTime = uint96(uint(prev));
+        uint prevMTime;
+        (prevAddress, prevMTime) = ta.extractPrevious();
         divisor = (currentMTime - prevMTime) / 2;
         dividend = divisor - time.remain(currentMTime);
-        prevAddress = address(bytes20(prev));
     }
 
     // TODO: handle revert to matured address

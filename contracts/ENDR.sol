@@ -48,9 +48,11 @@ contract ENDR is DataStructure {
         // (export CONTRACT=BrandMarket; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
         impls[0x0af77eb1] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
+        impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
         impls[0x84cc9dfb] = implPoR;    // claim
         impls[0x94457260] = implPoR;    // claimWithPrevTx
         impls[0x84c74f05] = implPoR;    // commitTx
+        impls[0xddcf8cd8] = implPoR;    // getBlockWinner
         impls[0xd02898cf] = implPoR;    // commitBlock
         impls[0x495dd54b] = implPoR;    // registerMiner
         impls[0x0aa0738f] = implPoR;    // changeMiner
@@ -59,8 +61,9 @@ contract ENDR is DataStructure {
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
         impls[0xb6b55f25] = implRefNetwork;     // deposit
         impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
+        impls[0xf2a75fe4] = implRefNetwork;     // empty
         impls[0xb12a6852] = implRefNetwork;     // setRent
-        impls[0xe0719564] = implRefNetwork;     // getRent
+        impls[0xbafb3581] = implRefNetwork;     // getNodeDetails
         impls[0x7dd55a78] = implRefNetwork;     // flatten
         impls[0xa8074c98] = implRefNetwork;     // payChain
         impls[0x0c11dedd] = implRefNetwork;     // pay

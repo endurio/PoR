@@ -122,7 +122,7 @@ struct Brand {
 
 struct Node {
     TAddress    parent;
-    Balance       balance;
+    Balance     balance;
     uint        commission; // total unclaimed commission for this node and upstream
 }
 

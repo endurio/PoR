@@ -249,6 +249,29 @@ contract PoR is DataStructure {
         winner.id = txId;
     }
 
+    function getBlockWinner(
+        bytes32 blockHash,
+        bytes32 memoHash
+    ) external view returns (
+        bytes32 id,
+        uint    reward,
+        address payer,
+        bytes32 outpointTxLE,
+        uint32  outpointIdx,
+        bytes20 pkh
+    ) {
+        Header storage header = headers[blockHash];
+        Transaction storage winner = header.winner[memoHash];
+        return (
+            winner.id,
+            winner.reward,
+            winner.payer,
+            winner.outpointTxLE,
+            winner.outpointIdx,
+            winner.pkh
+        );
+    }
+
     function _processTxMemo(
         bytes32         blockHash,
         bytes32         txId,
