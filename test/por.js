@@ -2,7 +2,7 @@ require('it-each')({ testPerIteration: true });
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
-const { time, expectRevert, expectEvent } = require('@openzeppelin/test-helpers');
+const { time, expectRevert, expectEvent, BN } = require('@openzeppelin/test-helpers');
 const snapshot = require('./lib/snapshot');
 const { keys, blocks, txs } = require('./data/por');
 const utils = require('./lib/utils');
@@ -131,27 +131,7 @@ contract("PoR", accounts => {
         return expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), claimRevert);
       }
 
-      let expectedReward = getExpectedReward(block);
-      if (multiplier) {
-        expectedReward *= BigInt(multiplier);
-      }
-      return expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH));
-
-      async function expectEventClaim(call) {
-        const receipt = await call;
-        expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
-        expectEvent(receipt, 'Transfer', {
-          from: ZERO_ADDRESS,
-          to: inst.address,
-          value: expectedReward.toString(),
-        });
-        expectEvent(receipt, 'Reward', {
-          memoHash: '0x'+ENDURIO_HASH,
-          payer: ZERO_ADDRESS,
-          payee: txData.miner,
-          amount: expectedReward.toString(),
-        });
-      }
+      return expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH), block, txData.miner, multiplier);
 
       function setMemoLength(extra, memoLength) {
         return extra.slice(0, 8*1) +
@@ -363,9 +343,6 @@ contract("PoR", accounts => {
       for (const txHash of commitTxs) {
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-        const expectedReward = getExpectedReward(block);
-        const expectedCommission = expectedReward >> 1n;
-        const expectedMinerReward = expectedReward - expectedCommission;
         const ownMiner = utils.addressCompare(txData.miner, sender.address) === 0; // we own the miner address
         ownMinerTests[ownMiner] = true;
 
@@ -384,48 +361,20 @@ contract("PoR", accounts => {
 
           // PKH position in output script is different between segwit and legacy
           const isSegWit = txData.hex.slice(8, 10) === '00';
-          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0, isSegWit ? 11 : 12));
+          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0, isSegWit ? 11 : 12), block, txData.miner);
           await snapshot.revert(ss);
         }
         
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), DUMMY_ADDRESS);
+          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), block, DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
         // auto detect PKH position
-        await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0));
+        await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), block, txData.miner);
         await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "no such block");
-
-        if (ownMiner) {
-          await expectRevert(instRN.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
-          expectEvent(await instRN.withdraw(expectedMinerReward.toString()),
-            'Transfer', {
-              from: inst.address,
-              to: sender.address,
-              value: expectedMinerReward.toString(),
-            },
-          );
-          await expectRevert(instRN.withdraw(1), "subtraction overflow");
-        }
-
-        async function expectEventClaim(call, recipient) {
-          const receipt = await call;
-          expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
-          expectEvent(receipt, 'Transfer', {
-            from: ZERO_ADDRESS,
-            to: inst.address,
-            value: expectedReward.toString(),
-          });
-          expectEvent(receipt, 'Reward', {
-            memoHash: '0x'+ENDURIO_HASH,
-            payer: ZERO_ADDRESS,
-            payee: recipient || txData.miner,
-            amount: expectedReward.toString(),
-          });
-        }
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
@@ -445,9 +394,6 @@ contract("PoR", accounts => {
       for (const txHash of commitTxs) {
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-        const expectedReward = getExpectedReward(block);
-        const expectedCommission = expectedReward >> 1n;
-        const expectedMinerReward = expectedReward - expectedCommission;
         const ownMiner = utils.addressCompare(txData.miner, sender.address) === 0; // we own the miner address
         ownMinerTests[ownMiner] = true;
 
@@ -461,41 +407,13 @@ contract("PoR", accounts => {
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(utils.claim(txData, ENDURIO_HASH), DUMMY_ADDRESS);
+          await expectEventClaim(utils.claim(txData, ENDURIO_HASH), block, DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
         // auto detect PKH position
-        await expectEventClaim(utils.claim(txData, ENDURIO_HASH));
+        await expectEventClaim(utils.claim(txData, ENDURIO_HASH), block, txData.miner);
         await expectRevert(utils.claim(txData, ENDURIO_HASH), "no such block");
-
-        if (ownMiner) {
-          await expectRevert(instRN.withdraw((expectedMinerReward+1n).toString()), "subtraction overflow");
-          expectEvent(await instRN.withdraw(expectedMinerReward.toString()),
-            'Transfer', {
-              from: inst.address,
-              to: sender.address,
-              value: expectedMinerReward.toString(),
-            },
-          );
-          await expectRevert(instRN.withdraw(1), "subtraction overflow");
-        }
-
-        async function expectEventClaim(call, recipient) {
-          const receipt = await call;
-          expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
-          expectEvent(receipt, 'Transfer', {
-            from: ZERO_ADDRESS,
-            to: inst.address,
-            value: expectedReward.toString(),
-          });
-          expectEvent(receipt, 'Reward', {
-            memoHash: '0x'+ENDURIO_HASH,
-            payer: ZERO_ADDRESS,
-            payee: recipient || txData.miner,
-            amount: expectedReward.toString(),
-          });
-        }
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
@@ -504,6 +422,34 @@ contract("PoR", accounts => {
 
   })
 })
+
+async function expectEventClaim(call, block, recipient, multiplier) {
+  let expectedReward = getExpectedReward(block);
+  if (multiplier) {
+    expectedReward *= BigInt(multiplier);
+  }
+  const expectedCommission = expectedReward >> 1n;
+  const expectedMinerReward = expectedReward - expectedCommission;
+
+  const receipt = await call;
+  expect(receipt.logs.length).to.equal(3, "claim must emit 3 events");
+  expectEvent(receipt, 'Transfer', {
+    from: ZERO_ADDRESS,
+    to: inst.address,
+    value: expectedReward.toString(),
+  });
+  expectEvent(receipt, 'Transfer', {
+    from: inst.address,
+    to: recipient,
+    value: expectedMinerReward.toString(),
+  });
+  expectEvent(receipt, 'Reward', {
+    memoHash: '0x'+ENDURIO_HASH,
+    payer: ZERO_ADDRESS,
+    payee: recipient,
+    amount: expectedReward.toString(),
+  });
+}
 
 function getExpectedReward(block) {
   const MAX_TARGET = 1n<<240n;
