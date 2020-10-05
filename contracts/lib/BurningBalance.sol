@@ -10,6 +10,8 @@ import "./time.sol";
  * Represented as a burning rate (uint192) and an expiration timestamp (uint64).
  */
 library BurningBalance {
+    uint constant MAX_UINT64    = 0xFFFFFFFFFFFFFFFF;   // maximum uint64 value
+
     using BurningBalance for uint;
 
     function pack(uint rate, uint expiration) internal pure returns (uint) {
@@ -17,7 +19,7 @@ library BurningBalance {
     }
 
     function unpack(uint bb) internal pure returns (uint rate, uint expiration) {
-        return (bb >> 192, bb & 0xFFFFFFFFFFFFFFFF);
+        return (bb >> 192, bb & MAX_UINT64);
     }
 
     /**
@@ -28,7 +30,7 @@ library BurningBalance {
     }
 
     function getExpiration(uint bb) internal pure returns (uint) {
-        return bb & 0xFFFFFFFFFFFFFFFF;
+        return bb & MAX_UINT64;
     }
 
     function getRate(uint bb) internal view returns (uint) {

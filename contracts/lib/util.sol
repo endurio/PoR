@@ -49,7 +49,7 @@ library util {
 
     /**
      * @dev assert(a <= b)
-     * @return x * b / c (precision can be lower if (x*b) overflown)
+     * @return x * a / b (precision can be lower if (x*a) overflown)
      */
     // solium-disable-next-line security/no-assign-params
     function scaleDown(uint x, uint a, uint b) internal pure returns (uint) {
@@ -63,7 +63,7 @@ library util {
             return y / b;
         }
 
-        uint shifted = 0;
+        uint shifted;
         do {
             x >>= 1;
             ++shifted;
