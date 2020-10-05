@@ -122,8 +122,9 @@ struct Brand {
 struct Node {
     TAddress    parent;
     uint        balance;    // BurningBalance
-    uint        packed;     // uint192(comRate) & rent cd end (uint64)
     uint        commission; // total unclaimed commission for this node and upstream
+    uint64      cooldownEnd;
+    uint64      cutBackRate;// cutBack = commission * cutBackRate / MAX_UINT64
 }
 
 library libnode {
@@ -140,7 +141,7 @@ library libnode {
 
     // increase the node commission, the new value is safely capped at MAX_UINT256
     function incCommissionCapped(Node storage n, uint commission) internal {
-        n.commission = util.addCap(n.commission, commission);
+        // n.commission = util.addCap(n.commission, commission);
     }
 
     // a node's weight

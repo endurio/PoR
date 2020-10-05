@@ -18,6 +18,7 @@ import "./interface/Initializable.sol";
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract RefNetwork is DataStructure, Initializable {
+    uint constant MAX_UINT64    = 0xFFFFFFFFFFFFFFFF;   // maximum uint64 value
     uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192) - 1;
 
@@ -91,10 +92,9 @@ contract RefNetwork is DataStructure, Initializable {
         (uint oldRent, uint expiration) = balance.unpack();
         require(!time.reach(expiration), "node expired");       // deposit due rent and some more first
         require(rent / 2 < oldRent, "restricted rent value");  // also revert on uninitialized node
-        uint packed = node.packed;
-        require(time.reach(packed.getExpiration()), "rent cooldown");
+        require(time.reach(node.cooldownEnd), "rent cooldown");
         node.balance = balance.setRate(rent);
-        node.packed = packed.setExpiration(time.next(RENT_CD));
+        node.cooldownEnd = uint64(time.next(RENT_CD));
     }
 
     function getNodeDetails(address noder) external view returns (
@@ -110,7 +110,7 @@ contract RefNetwork is DataStructure, Initializable {
         Node storage node = nodes[noder];
         balance = node.balance.getRemain();
         rent = node.balance.getRate();
-        cooldownEnd = node.packed.getExpiration();
+        cooldownEnd = node.cooldownEnd;
         commission = node.commission;
         (parent, parentMTime) = node.parent.extract();
         (prevParent, prevParentMTime) = node.parent.extractPrevious();
