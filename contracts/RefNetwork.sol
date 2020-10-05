@@ -4,7 +4,7 @@ pragma solidity >=0.6.2;
 // solium-disable security/no-block-members
 
 import "./lib/util.sol";
-import "./lib/rb.sol";
+import "./lib/BurningBalance.sol";
 import "./lib/tadr.sol";
 import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
@@ -21,13 +21,14 @@ contract RefNetwork is DataStructure, Initializable {
     uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192) - 1;
 
-    using rb for Balance;
+    using BurningBalance for uint;
     using tadr for TAddress;
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
     uint    constant ROOT_EXP       = 5; // root commssion ~> TotalMined / 2^5
     int128  constant ROOT_EXP_64x64 = int128(ROOT_EXP << 64); // ABDKMath64x64.fromUInt(ROOT_EXP);
+    uint    constant RENT_CD        = 1 weeks;
 
     uint constant EPOCH = 1 weeks;
 
@@ -57,37 +58,49 @@ contract RefNetwork is DataStructure, Initializable {
         _attach(msg.sender, parent);
     }
 
+    /**
+     * deposit and extend the node expiration.
+     * Expired node can still deposit and resume if all the down-time rent is also paid.
+     */
     function deposit(uint amount) external {
         Node storage node = nodes[msg.sender];
-        require(node.exists(), "no such node");
-        _transfer(msg.sender, address(this), amount);
-        node.balance.add(amount);
+        _burn(msg.sender, amount);
+        node.balance = node.balance.deposit(amount);
     }
 
+    /**
+     * withraw and contract the node expiration, revert on over-withdraw
+     * use empty() to withdraw all remain rent balance
+     */
     function withdraw(uint amount) external {
         Node storage node = nodes[msg.sender];
-        // require(node.exists(), "no such node"); // the next line will verify node existent
-        node.balance.sub(amount);
-        _transfer(address(this), msg.sender, amount);
+        node.balance = node.balance.withdraw(amount);
+        _mint(msg.sender, amount);
     }
 
     function empty() external {
         Node storage node = nodes[msg.sender];
-        uint balance = node.balance.empty();
-        _transfer(address(this), msg.sender, balance);
+        uint remain = node.balance.getRemain();
+        delete node.balance;
+        _transfer(address(this), msg.sender, remain);
     }
 
     function setRent(uint rent) external {
         Node storage node = nodes[msg.sender];
-        require(node.exists(), "no such node");
-        require(rent != node.balance.getRate(), "unchanged rent");
-        _pay(msg.sender);
-        node.balance.setRate(rent);
+        uint balance = node.balance;
+        (uint oldRent, uint expiration) = balance.unpack();
+        require(!time.reach(expiration), "node expired");       // deposit due rent and some more first
+        require(rent / 2 < oldRent, "restricted rent value");  // also revert on uninitialized node
+        uint packed = node.packed;
+        require(time.reach(packed.getExpiration()), "rent cooldown");
+        node.balance = balance.setRate(rent);
+        node.packed = packed.setExpiration(time.next(RENT_CD));
     }
 
     function getNodeDetails(address noder) external view returns (
         uint    balance,
         uint    rent,
+        uint    cooldownEnd,
         uint    commission,
         address parent,
         uint    parentMTime,
@@ -95,8 +108,9 @@ contract RefNetwork is DataStructure, Initializable {
         uint    prevParentMTime
     ) {
         Node storage node = nodes[noder];
-        balance = node.balance.peek();
+        balance = node.balance.getRemain();
         rent = node.balance.getRate();
+        cooldownEnd = node.packed.getExpiration();
         commission = node.commission;
         (parent, parentMTime) = node.parent.extract();
         (prevParent, prevParentMTime) = node.parent.extractPrevious();
@@ -159,7 +173,7 @@ contract RefNetwork is DataStructure, Initializable {
         }
         if (noder == ROOT_ADDRESS) {
             // root node alway take all the remain commission
-            node.balance.rawAdd(commission);
+            node.balance.deposit(commission);
             uint rootC = util.addCap(epochTotalRootC, commission);
             // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
             if (time.reach(epochEnd)) {

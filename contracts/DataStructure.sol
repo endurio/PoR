@@ -7,7 +7,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import "./lib/util.sol";
 import "./lib/tadr.sol";
-import "./lib/rb.sol";
+import "./lib/BurningBalance.sol";
 import "./lib/suint192.sol";
 import "./lib/time.sol";
 
@@ -70,7 +70,6 @@ contract DataStructure is ERC20 {
     );
 
     // libraries
-    using rb for Balance;
     using tadr for TAddress;
     using libnode for Node;
 
@@ -122,13 +121,14 @@ struct Brand {
 
 struct Node {
     TAddress    parent;
-    Balance     balance;
+    uint        balance;    // BurningBalance
+    uint        packed;     // uint192(comRate) & rent cd end (uint64)
     uint        commission; // total unclaimed commission for this node and upstream
 }
 
 library libnode {
     using tadr for TAddress;
-    using rb for Balance;
+    using BurningBalance for uint;
 
     /**
      * nodes with parent is root, will have the expiredTime != 0
@@ -145,7 +145,7 @@ library libnode {
 
     // a node's weight
     function getWeight(Node storage n) internal view returns (uint) {
-        return n.balance.getWeight();
+        return n.balance.getRate();
     }
 }
 
