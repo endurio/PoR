@@ -332,12 +332,13 @@ contract("PoR", accounts => {
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
         '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
+      const wrongDxHash = 'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c';
       const ownMinerTests = {}
 
       { // scope in
         const txHash = commitTxs[0];
         const txData = txs[txHash];
-        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "mining time not over");
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), "mining time not over");
       }
 
       for (const txHash of commitTxs) {
@@ -357,24 +358,25 @@ contract("PoR", accounts => {
         { // snapshot scope
           const ss = await snapshot.take();
           // PKH never be in the start of the output script
-          await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0, 10), "unregistered PKH");
+          await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, {pkhPos: 10}), "unregistered PKH");
+          await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, {dxHash: wrongDxHash}), "outpoint tx mismatch");
 
           // PKH position in output script is different between segwit and legacy
           const isSegWit = txData.hex.slice(8, 10) === '00';
-          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0, isSegWit ? 11 : 12), block, txData.miner);
+          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, {pkhPos: isSegWit ? 11 : 12}), block, txData.miner);
           await snapshot.revert(ss);
         }
         
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), block, DUMMY_ADDRESS);
+          await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH), block, DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
         // auto detect PKH position
-        await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), block, txData.miner);
-        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "no such block");
+        await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH), block, txData.miner);
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), "no such block");
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
@@ -402,7 +404,7 @@ contract("PoR", accounts => {
           await time.increaseTo(targetTimestamp);
         }
 
-        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH, 0), "use claim instead");
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), "use claim instead");
 
         if (ownMiner) {
           const ss = await snapshot.take();

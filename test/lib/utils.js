@@ -77,9 +77,9 @@ module.exports = {
     return instPoR.claim('0x' + txData.block, '0x' + brandHash);
   },
 
-  claimWithPrevTx(txData, brandHash, inputIdx, pkhPos) {
+  claimWithPrevTx(txData, brandHash, {inputIdx, pkhPos, dxHash} = {}) {
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-    const dxHash = tx.ins[inputIdx || 0].hash.reverse().toString('hex');
+    dxHash = dxHash || tx.ins[inputIdx || 0].hash.reverse().toString('hex');
 
     // dependency tx
     const dxMeta = txs[dxHash];
