@@ -9,6 +9,7 @@ module.exports = {
     mocha: {
         reporter: 'eth-gas-reporter',
         reporterOptions: {
+            currency: 'USD',
             showTimeSpent: true,
             onlyCalledMethods: true,
             excludeContracts: ["Migrations"],
