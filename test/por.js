@@ -153,6 +153,7 @@ contract("PoR", accounts => {
         '0000000000000090050d68c86adc68aae0eb38b0b66563e3c4952a9c50d3ee3a',
         '000000008d1a77ab3cd49cce9a1c33309d37bc4c26b90bf978ca55c99edacaa3',
         '000000000000007d83f128bc0efbc7b42e970225bae8c5556bac5f506026e23d',
+        '00000000cbcd979cbd4b22a443df9b157345079f6d1f6121525803548ac570a0', // block no OP_RET tx
       ]
 
       for (const hash of commitBlocks) {
@@ -248,6 +249,21 @@ contract("PoR", accounts => {
       }
     })
 
+    it("commitTx with no OP_RET", async() => {
+      const commitTxs = [
+        'e8c8a653e4bdcad2556c5dc93e1261e89b6eb69c5349a3f49360db68208699d2',
+      ]
+      for (const txHash of commitTxs) {
+        let [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
+        const blockHash = block.getId();
+
+        await expectRevert(
+          instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+          '!OP_RET',
+        );
+      }
+    })
+
     it("commitTx", async() => {
       const commitTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
@@ -259,6 +275,7 @@ contract("PoR", accounts => {
         '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
         '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
+
       for (const txHash of commitTxs) {
         let [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();

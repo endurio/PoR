@@ -206,12 +206,11 @@ contract PoR is DataStructure {
 
         require(ValidateSPV.prove(txId, header.merkleRoot, merkleProof, _extractUint32(extra, EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
-        // TODO: remove EXTRA_OUTPUT_IDX and scan for the first OP_RET output
-        // extract the brand from OP_RETURN
+        // extract the brand from the first output with OP_RETURN
         Transaction storage winner = _processTxMemo(
             blockHash,
             txId,
-            vout.extractOutputAtIndex(_extractUint32(extra, EXTRA_OUTPUT_IDX)).extractOpReturnData(),
+            vout.extractFirstOpReturn(),
             _extractUint32(extra, EXTRA_MEMO_LENGTH),
             payer
         );

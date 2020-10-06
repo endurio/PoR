@@ -55,10 +55,14 @@ module.exports = {
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
     const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
 
-    const [outIdx, memo] = findMemoOutputIndex(tx.outs, brand);
-    expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
-
-    const memoLength = memo.length > brand.length ? brand.length : 0;
+    const memo = findMemo(tx.outs)
+    let memoLength = 0;
+    if (memo) {
+      expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
+      // const [outIdx, memo] = findMemoOutputIndex(tx.outs, brand);
+      // expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
+      memoLength = memo.length > brand.length ? brand.length : 0;
+    }
 
     let extra =
       idx.toString(16).pad(8) +
@@ -66,7 +70,7 @@ module.exports = {
       '00000000' +  // unused
       '00000000' +  // compressed PK position
       '00000000' +  // input index
-      outIdx.toString(16).pad(8) +
+      '00000000' +  // OP_RET output index (deprecated)
       locktime.toString(16).pad(8).reverseHex() +
       version.toString(16).pad(8).reverseHex();
 
@@ -112,14 +116,13 @@ module.exports = {
   },
 }
 
-function findMemoOutputIndex(outs, brand) {
+function findMemo(outs) {
   for (let i = 0; i < outs.length; ++i) {
     const script = outs[i].script;
     if (script[0].toString(16) === '6a') { // OP_RET
       const len = script[1]
       const memo = script.slice(2, 2 + len).toString()
-      expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
-      return [i, memo]
+      return memo
     }
   }
 }

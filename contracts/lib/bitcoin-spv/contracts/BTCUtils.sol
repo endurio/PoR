@@ -361,6 +361,27 @@ library BTCUtils {
         return _vout.slice(_offset, _len);
     }
 
+    function extractFirstOpReturn(bytes memory _vout) internal pure returns (bytes memory) {
+        (uint256 _varIntDataLen, uint256 _nOuts) = parseVarInt(_vout);
+        require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
+
+        bytes memory _remaining;
+        uint256 _offset = 1 + _varIntDataLen;
+
+        for (uint256 _i = 0; _i < _nOuts; _i ++) {
+            _remaining = _vout.slice(_offset, _vout.length - _offset);
+            if (_remaining[9] == 0x6a) {    // OP_RETURN
+                uint _dataLen = uint8(_remaining[10]);
+                return _remaining.slice(11, _dataLen);
+            }
+            uint _len = determineOutputLength(_remaining);
+            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
+            _offset += _len;
+        }
+
+        revert("!OP_RET");
+    }
+
     /// @notice          Extracts the value bytes from the output in a tx
     /// @dev             Value is an 8-byte little-endian number
     /// @param _output   The output
