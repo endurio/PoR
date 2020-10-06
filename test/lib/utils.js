@@ -59,18 +59,16 @@ module.exports = {
     let memoLength = 0;
     if (memo) {
       expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
-      // const [outIdx, memo] = findMemoOutputIndex(tx.outs, brand);
-      // expect(outIdx, 'mining OP_RET output not found').to.not.be.undefined;
       memoLength = memo.length > brand.length ? brand.length : 0;
     }
 
     let extra =
-      idx.toString(16).pad(8) +
-      (memoLength).toString(16).pad(8) +
-      '00000000' +  // unused
+      '00000000' +
+      '00000000' +
       '00000000' +  // compressed PK position
-      '00000000' +  // input index
-      '00000000' +  // OP_RET output index (deprecated)
+      (memoLength).toString(16).pad(8) +
+      '00000000' +  // miner input index
+      idx.toString(16).pad(8) +   // merkle index
       locktime.toString(16).pad(8).reverseHex() +
       version.toString(16).pad(8).reverseHex();
 
@@ -89,16 +87,22 @@ module.exports = {
     const dxMeta = txs[dxHash];
     const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
 
-    extra =
+    let extra =
       locktime.toString(16).pad(8).reverseHex() +
       version.toString(16).pad(8).reverseHex();
-
-    if (pkhPos) {
-      extra = pkhPos.toString(16).pad(8) + extra
-    }
     extra = extra.pad(64);
 
+    if (pkhPos) {
+      extra = setPKHPos(extra, pkhPos)
+    }
+
     return instPoR.claimWithPrevTx('0x' + txData.block, '0x' + brandHash, '0x' + vin, '0x' + vout, '0x' + extra);
+
+    function setPKHPos(extra, pkhPos) {
+      return extra.slice(0, 8*2) +
+        (pkhPos).toString(16).pad(8) +
+        extra.slice(8*3);
+    }
   },
 
   addressCompare(a, b) {

@@ -23,12 +23,10 @@ contract PoR is DataStructure {
     // extra param bit posistion (from the right)
     uint constant EXTRA_VERSION     = 32*0;
     uint constant EXTRA_LOCKTIME    = 32*1;
-    uint constant EXTRA_OUTPUT_IDX  = 32*2;     uint constant EXTRA_PKH_IDX         = 32*2;
+    uint constant EXTRA_MERKLE_IDX  = 32*2;
     uint constant EXTRA_INPUT_IDX   = 32*3;
-    uint constant EXTRA_PUBKEY_POS  = 32*4;
-    // uint constant EXTRA_MINER_POS = 32*5;
-    uint constant EXTRA_MEMO_LENGTH = 32*6;
-    uint constant EXTRA_MERKLE_IDX  = 32*7;
+    uint constant EXTRA_MEMO_LENGTH = 32*4;
+    uint constant EXTRA_PUBKEY_POS  = 32*5;     uint constant EXTRA_PKH_POS         = 32*5;
 
     using BTCUtils for bytes;
     using BTCUtils for uint256;
@@ -45,8 +43,11 @@ contract PoR is DataStructure {
     }
 
     /// @param extra       All the following params packed in a single bytes32
-    ///     uint32 EXTRA_PKH_IDX,   (optional) position of miner PKH in the outpoint raw data
+    ///     uint32 EXTRA_PKH_POS,   (optional) position of miner PKH in the outpoint raw data
     ///                             (including the first 8-bytes amount for optimization)
+    ///     uint32
+    ///     uint32
+    ///     uint32
     ///     uint32 EXTRA_LOCKTIME,  tx locktime
     ///     uint32 EXTRA_VERSION,   tx version
     function claimWithPrevTx(
@@ -70,7 +71,7 @@ contract PoR is DataStructure {
 
         { // stack too deep
         bytes memory output = vout.extractOutputAtIndex(winner.outpointIdx);
-        bytes20 pkh = _extractPKH(output, _extractUint32(extra, EXTRA_PKH_IDX));
+        bytes20 pkh = _extractPKH(output, _extractUint32(extra, EXTRA_PKH_POS));
         _reward(blockHash, memoHash, pkh);
         }
     }
@@ -174,12 +175,12 @@ contract PoR is DataStructure {
 
     /// @param merkleProof The proof's intermediate nodes (digests between leaf and root)
     /// @param extra       All the following params packed in a single bytes32
-    ///     uint32 EXTRA_MERKLE_IDX  // the merkle leaf's index in the tree (0-indexed)
-    ///     uint32 EXTRA_MEMO_LENGTH // (optional) memo lengh in OP_RET to add extra user memo after the brand
+    ///     uint32
     ///     uint32
     ///     uint32 EXTRA_PUBKEY_POS  // (optional) index of 33-bytes compressed PubKey in input redeem script
+    ///     uint32 EXTRA_MEMO_LENGTH // (optional) memo lengh in OP_RET to add extra user memo after the brand
     ///     uint32 EXTRA_INPUT_IDX   // index of input which its outpoint locking script contains the miner PKH
-    ///     uint32 EXTRA_OUTPUT_IDX  // index of OP_RET output
+    ///     uint32 EXTRA_MERKLE_IDX  // the merkle leaf's index in the tree (0-indexed)
     ///     uint32 EXTRA_LOCKTIME    // tx locktime, little endian
     ///     uint32 EXTRA_VERSION     // tx version, little endian
     function commitTx(

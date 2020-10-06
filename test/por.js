@@ -134,9 +134,9 @@ contract("PoR", accounts => {
       return expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH), block, txData.miner, multiplier);
 
       function setMemoLength(extra, memoLength) {
-        return extra.slice(0, 8*1) +
+        return extra.slice(0, 8*3) +
           (memoLength).toString(16).pad(8) +
-          extra.slice(8*2);
+          extra.slice(8*4);
       }
     }
   })
@@ -243,9 +243,9 @@ contract("PoR", accounts => {
       }
 
       function setPubKeyPos(extra, posPK) {
-        return extra.slice(0, 8*3) +
+        return extra.slice(0, 8*2) +
           (posPK).toString(16).pad(8) +
-          extra.slice(8*4);
+          extra.slice(8*3);
       }
     })
 
@@ -307,9 +307,9 @@ contract("PoR", accounts => {
           await snapshot.revert(ss);
         }
 
-        const extra1 = extra.slice(0, 32) +
+        const extra1 = extra.slice(0, 8*4) +
           (1).toString(16).pad(8) +  // change the miner input index
-          extra.slice(40);
+          extra.slice(8*5);
 
         if (tx.ins.length > 1) {
           await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
