@@ -5,41 +5,39 @@ pragma solidity >=0.6.2;
 
 import "./lib/util.sol";
 import "./lib/BurningBalance.sol";
-import "./lib/tadr.sol";
+import "./lib/MaturingAddress.sol";
 import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 import "./lib/time.sol";
 import "./interface/Initializable.sol";
+import "./interface/ICommissionReceiver.sol";
 
 /**
  * Referral Network
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract RefNetwork is DataStructure, Initializable {
-    uint constant MAX_UINT64    = 0xFFFFFFFFFFFFFFFF;   // maximum uint64 value
+contract RefNetwork is DataStructure, ICommissionReceiver, Initializable {
+    uint constant MAX_UINT64    = 0xFFFFFFFFFFFFFFFF;
     uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192) - 1;
 
     using BurningBalance for uint;
-    using tadr for TAddress;
+    using MaturingAddress for bytes32;
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
-    uint    constant ROOT_EXP       = 5; // root commssion ~> TotalMined / 2^5
-    int128  constant ROOT_EXP_64x64 = int128(ROOT_EXP << 64); // ABDKMath64x64.fromUInt(ROOT_EXP);
-    uint    constant RENT_CD        = 1 weeks;
+    uint    constant ROOT_EXP           = 5; // root commssion ~> TotalMined / 2^5
+    int128  constant ROOT_EXP_64x64     = int128(ROOT_EXP << 64); // ABDKMath64x64.fromUInt(ROOT_EXP);
+    uint    constant RENT_CD            = 1 weeks;
+    uint    constant FREEZING_DURATION  = 1 weeks;  // node expired for this long can be flatten (by anyone)
 
     uint constant EPOCH = 1 weeks;
 
     function initialize() public override {
         require(root == address(0x0), "already initialized");
         root = msg.sender;
-        // init the root node at ROOT_ADDRESS, with parrent at ROOT_PARENT
-        nodes[ROOT_ADDRESS].parent.forceTo(ROOT_PARENT, 0);
-        // init the end of the first epoch
-        epochEnd = time.next(EPOCH);
     }
 
     function getRoot() external view returns (address) {
@@ -55,8 +53,7 @@ contract RefNetwork is DataStructure, Initializable {
      * init a node, attach or re-attach to parent node
      */
     function attach(address parent) external {
-        require(nodes[parent].exists(), "parent not exist");
-        _attach(msg.sender, parent);
+        nodes[msg.sender].attach(parent);
     }
 
     /**
@@ -91,10 +88,10 @@ contract RefNetwork is DataStructure, Initializable {
         uint balance = node.balance;
         (uint oldRent, uint expiration) = balance.unpack();
         require(!time.reach(expiration), "node expired");       // deposit due rent and some more first
-        require(rent / 2 < oldRent, "restricted rent value");  // also revert on uninitialized node
+        require(rent / 2 < oldRent, "restricted rent value");   // also revert on uninitialized node
         require(time.reach(node.cooldownEnd), "rent cooldown");
         node.balance = balance.setRate(rent);
-        node.cooldownEnd = uint64(time.next(RENT_CD));
+        node.cooldownEnd = uint64(time.next(RENT_CD));  // unsafe
     }
 
     function getNodeDetails(address noder) external view returns (
@@ -103,113 +100,26 @@ contract RefNetwork is DataStructure, Initializable {
         uint    cooldownEnd,
         uint    commission,
         address parent,
-        uint    parentMTime,
-        address prevParent,
-        uint    prevParentMTime
+        uint    duration,
+        uint    maturedTime,
+        address prevParent
     ) {
         Node storage node = nodes[noder];
         balance = node.balance.getRemain();
         rent = node.balance.getRate();
         cooldownEnd = node.cooldownEnd;
         commission = node.commission;
-        (parent, parentMTime) = node.parent.extract();
-        (prevParent, prevParentMTime) = node.parent.extractPrevious();
+        (parent, duration, maturedTime) = node.parent.unpack();
+        prevParent = node.prevParent;
     }
 
-    /**
-     * re-attach this node to the nearest ancestor with non-zero effective rent up the stream
-     */
-    function flatten(address noder) external {
-        require(noder != ROOT_ADDRESS, "node account required"); // defensive
-        Node storage node = nodes[noder];
-        require(node.exists(), "no such node"); // defensive
-        (address parent,) = node.parent.extract();
-        address newParent = _findFlattenedParent(parent);
-        if (newParent != parent) {
-            // found new parent, re-attach
-            node.parent.forceTo(parent);
-        }
-    }
-
-    // TODO: use a rent threshold instead, governance?
-    function _findFlattenedParent(address parent) internal view returns (address) {
-        // keep searching up-stream until an ancestor with non-zero effective rent found
-        while (parent != ROOT_ADDRESS && nodes[parent].getWeight() == 0) {
-            (parent,) = nodes[parent].parent.extract();
-        }
-        return parent;
-    }
-
-    /**
-     * pay the commision for the nodes and leave the remain to upstream,
-     * Note: can be executed by anyone.
-     */
-     // solium-disable-next-line security/no-assign-params
-    function payChain(address noder, uint depth) external {
-        for (uint i = 0; i < depth; ++i) {
-            noder = _pay(noder);
-            if (noder == ROOT_PARENT) {
-                return;
-            }
-        }
-    }
-
-    /**
-     * pay the commision for the node and leave the remain to upstream
-     * Note: can be executed by anyone.
-     */
-    function pay(address noder) external {
-        _pay(noder);
-    }
-
-    /**
-     * @return parent address, or ROOT_PARENT if there no more node nor commission
-     */
-    function _pay(address noder) internal returns (address) {
-        Node storage node = nodes[noder];
-        uint commission = node.commission;
-        if (commission == 0) {
-            return ROOT_PARENT;
-        }
-        if (noder == ROOT_ADDRESS) {
-            // root node alway take all the remain commission
-            node.balance.deposit(commission);
-            uint rootC = util.addCap(epochTotalRootC, commission);
-            // TBD: also check the accumulated cap here to prevent epochTotalReward overflow before an epoch pass?
-            if (time.reach(epochEnd)) {
-                _adaptGlobalLevelStep(rootC);
-            } else {
-                epochTotalRootC = rootC;
-            }
-            return ROOT_PARENT;
-        }
-        require(node.exists(), "node not exists");
-        uint r = node.getWeight();
-        if (r == 0) {
-            // TBD: check flattening condition here?
-            return _payUpstream(node, node.commission);
-        }
-        // globalLevelStep is a global params, adjust so that root node get approximately 1/32 of the token rewarded.
-        uint S = globalLevelStep;
-        uint remain;
-        if (S <= 1) {
-            // use minimum value for S if it's zero
-            remain = commission >> r;
-        } else {
-            if (r / S > MAX_INT64) { // overflow 64x64
-                // take all the remain commission, leave nothing behind
-                node.balance.add(commission);
-                return ROOT_PARENT; // no more commission to process
-            }
-            int128 a = ABDKMath64x64.divu(r, S).neg().exp_2(); // a = 1/2^(r/S) = 2^(-r/S)
-            remain = a.mulu(commission);   // remain = commission / 2^(r/S)
-        }
-
-        node.balance.add(commission - remain);
-        if (remain == 0) {
-            return ROOT_PARENT; // no more commission to process
-        }
-        return _payUpstream(node, remain);
+    function pay(
+        address miner,
+        address payer,
+        uint amount
+    ) external override returns (uint cutBackCommission) {
+        require(msg.sender == address(this), "from claim only");
+        // TODO
     }
 
     /**
@@ -253,5 +163,49 @@ contract RefNetwork is DataStructure, Initializable {
         int128 c = ABDKMath64x64.divu(C, rootC);
         int128 lc = c.log_2();
         return lc.div(ROOT_EXP_64x64).muluc(S);
+    }
+}
+
+library libnode {
+    uint constant MAX_UINT64 = 0xFFFFFFFFFFFFFFFF;
+
+    using MaturingAddress for bytes32;
+    using BurningBalance for uint;
+
+    function attach(Node storage n, address newParent) internal {
+        bytes32 parent = n.parent;
+        if (parent == 0) { // uninitialized
+            n.parent = MaturingAddress.pack(newParent, 0, time.blockTimestamp());
+            return;
+        }
+        // new maturing process starts from the last matured time if the current address is matured,
+        // from the last start time otherwise
+        uint lastMaturedTime = parent.getMaturedTime();
+        if (!time.reach(lastMaturedTime)) { // not matured
+            lastMaturedTime = parent.getStartTime();
+        } else { // matured
+            n.prevParent = parent.getAddress();
+        }
+        // new maturing duration is the time elapsed from the last parent matured time
+        uint duration = time.elapse(lastMaturedTime);
+        uint maturedTime = time.next(duration);
+        // overflow check
+        if (maturedTime > MAX_UINT64 || maturedTime < time.blockTimestamp()) {
+            maturedTime = MAX_UINT64; // cap the result
+            duration = time.remain(maturedTime);
+        }
+        n.parent = MaturingAddress.pack(newParent, duration, maturedTime);
+    }
+
+    // TODO: function revertParentTransfer
+
+    // increase the node commission, the new value is safely capped at MAX_UINT256
+    function incCommissionCapped(Node storage n, uint commission) internal {
+        // n.commission = util.addCap(n.commission, commission);
+    }
+
+    // a node's weight
+    function getWeight(Node storage n) internal view returns (uint) {
+        return n.balance.getRate();
     }
 }

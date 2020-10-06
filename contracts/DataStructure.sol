@@ -4,12 +4,6 @@ pragma solidity >=0.6.2;
 // solium-disable security/no-block-members
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "./lib/bitcoin-spv/contracts/BytesLib.sol";
-import "./lib/util.sol";
-import "./lib/tadr.sol";
-import "./lib/BurningBalance.sol";
-import "./lib/suint192.sol";
-import "./lib/time.sol";
 
 /**
  * Data Structure and common logic
@@ -68,10 +62,11 @@ contract DataStructure is ERC20 {
         address indexed payee,
         uint            amount
     );
-
-    // libraries
-    using tadr for TAddress;
-    using libnode for Node;
+    event CommissionAvailable(
+        address indexed miner,
+        bytes32 indexed memoHash,
+        bytes32 indexed blockHash
+    );
 
     constructor() public ERC20("Endurio", "ENDR") {
     }
@@ -82,35 +77,6 @@ contract DataStructure is ERC20 {
     receive() external payable {
         revert("No thanks!");
     }
-
-    function _attach(address noder, address parent) internal {
-        nodes[noder].parent.transferTo(parent);
-    }
-
-    /**
-     * @dev shared for RefNet.commit and PoR.reward
-     */
-    function _payUpstream(Node storage node, uint commission) internal returns (address) {
-        (address parent, uint96 mtime) = node.parent.extract();
-        Node storage parentNode = nodes[parent];
-        assert(parentNode.exists());
-
-        if (time.reach(mtime)) { // matured
-            parentNode.incCommissionCapped(commission);
-            return parent;
-        }
-
-        // maturing address transfer here
-        (uint dividend, uint divisor, address oldParent) = node.parent.maturingRate(mtime);
-        assert(dividend <= divisor);
-        uint newC = util.scaleDown(commission, dividend, divisor);
-        parentNode.incCommissionCapped(newC);
-        Node storage oldParentNode = nodes[oldParent];
-        assert(oldParentNode.exists());
-        oldParentNode.incCommissionCapped(commission - newC);
-
-        return parent;
-    }
 }
 
 struct Brand {
@@ -120,34 +86,12 @@ struct Brand {
 }
 
 struct Node {
-    TAddress    parent;
     uint        balance;    // BurningBalance
     uint        commission; // total unclaimed commission for this node and upstream
+    bytes32     parent;
+    address     prevParent;
     uint64      cooldownEnd;
-    uint64      cutBackRate;// cutBack = commission * cutBackRate / MAX_UINT64
-}
-
-library libnode {
-    using tadr for TAddress;
-    using BurningBalance for uint;
-
-    /**
-     * nodes with parent is root, will have the expiredTime != 0
-     * root node has expiredTime == 0 but the parent address is 0xFF..FF
-     */
-    function exists(Node storage n) internal view returns (bool) {
-        return n.parent.exists();
-    }
-
-    // increase the node commission, the new value is safely capped at MAX_UINT256
-    function incCommissionCapped(Node storage n, uint commission) internal {
-        // n.commission = util.addCap(n.commission, commission);
-    }
-
-    // a node's weight
-    function getWeight(Node storage n) internal view returns (uint) {
-        return n.balance.getRate();
-    }
+    uint32      cutBackRate;// cutBack = commission * cutBackRate / MAX_UINT32
 }
 
 struct Header {
@@ -160,11 +104,30 @@ struct Header {
     mapping(bytes32 => Transaction) winner; // keccak(brand.memo) => winning tx
 }
 
+enum TxState {
+    CLAIMED,
+    PKH,        // for P2PKH, P2SH-P2WPKH
+    OUTPOINT    // for P2WPKH (along with outpointIdx)
+}
+
+/**
+ * The winner tx is the tx with the smallest value of KECCAK(BlockHash + id)
+ *
+ * The id field is cleared in claim/claimWithPrevTx to mark the transaction is ready
+ * for the upstream commission to be paid.
+ *
+ * KECCAK(BlockHash + miner) is used as the random seed for the upstream commission selection.
+ *
+ * minerData store miner data depend on the state:
+ *  CLAIMED:     miner address
+ *  PKH:         PKH of the miner
+ *  OUTPOINT:    the first 20 bytes of outputTxLE
+ */
 struct Transaction {
     bytes32 id;
     uint    reward;
     address payer;
-    bytes32 outpointTxLE;   // for P2WPKH
-    uint32  outpointIdx;    // for P2WPKH               TODO: pack this with other field
-    bytes20 pkh;            // for P2PKH, P2SH-P2WPKH
+    bytes20 minerData;
+    uint32  outpointIdx;    // for P2WPKH (along with minderData.OUTPOINT)
+    TxState state;
 }

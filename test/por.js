@@ -428,20 +428,18 @@ async function expectEventClaim(call, block, recipient, multiplier) {
   if (multiplier) {
     expectedReward *= BigInt(multiplier);
   }
-  const expectedCommission = expectedReward >> 1n;
-  const expectedMinerReward = expectedReward - expectedCommission;
 
   const receipt = await call;
-  expect(receipt.logs.length).to.equal(3, "claim must emit 3 events");
+  expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
+  // expectEvent(receipt, 'Transfer', {
+  //   from: inst.address,
+  //   to: recipient,
+  //   value: expectedMinerReward.toString(),
+  // });
   expectEvent(receipt, 'Transfer', {
     from: ZERO_ADDRESS,
-    to: inst.address,
-    value: expectedReward.toString(),
-  });
-  expectEvent(receipt, 'Transfer', {
-    from: inst.address,
     to: recipient,
-    value: expectedMinerReward.toString(),
+    value: expectedReward.toString(),
   });
   expectEvent(receipt, 'Reward', {
     memoHash: '0x'+ENDURIO_HASH,

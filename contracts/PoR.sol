@@ -5,6 +5,7 @@ import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
+import "./interface/ICommissionReceiver.sol";
 import "./lib/util.sol";
 import "./DataStructure.sol";
 import "./lib/time.sol";
@@ -20,10 +21,9 @@ contract PoR is DataStructure {
     uint constant MAX_TARGET = 1<<240;
 
     // extra param bit posistion (from the right)
-    uint constant EXTRA_VERSION     = 0;
-    uint constant EXTRA_LOCKTIME    = 32;
-    uint constant EXTRA_PKH_IDX     = 32*2;
-    uint constant EXTRA_OUTPUT_IDX  = 32*2;
+    uint constant EXTRA_VERSION     = 32*0;
+    uint constant EXTRA_LOCKTIME    = 32*1;
+    uint constant EXTRA_OUTPUT_IDX  = 32*2;     uint constant EXTRA_PKH_IDX         = 32*2;
     uint constant EXTRA_INPUT_IDX   = 32*3;
     uint constant EXTRA_PUBKEY_POS  = 32*4;
     // uint constant EXTRA_MINER_POS = 32*5;
@@ -39,56 +39,54 @@ contract PoR is DataStructure {
         bytes32 blockHash,  // big-endian
         bytes32 memoHash
     ) external {
-        Header storage header = headers[blockHash];
-        Transaction storage winner = _mustGetBlockWinner(header, memoHash);
-
-        { // stack too deep
-        bytes20 pkh = winner.pkh;
-        require(pkh != 0, "PubKey or PKH not relayed, use claimWithPrevTx instead");
-        _reward(memoHash, winner.payer, pkh, winner.reward);
-        }
-
-        _cleanUpWinner(blockHash, memoHash);
+        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+        _requireState(winner.state, TxState.PKH);
+        _reward(blockHash, memoHash, winner.minerData);
     }
 
+    /// @param extra       All the following params packed in a single bytes32
+    ///     uint32 EXTRA_PKH_IDX,   (optional) position of miner PKH in the outpoint raw data
+    ///                             (including the first 8-bytes amount for optimization)
+    ///     uint32 EXTRA_LOCKTIME,  tx locktime
+    ///     uint32 EXTRA_VERSION,   tx version
     function claimWithPrevTx(
         bytes32             blockHash,     // big-endian
         bytes32             memoHash,
         bytes   calldata    vin,    // outpoint tx input vector
         bytes   calldata    vout,   // outpoint tx output vector
         bytes32             extra
-            // uint32 EXTRA_PKH_IDX,    // (optional) position of miner PKH in the outpoint raw data
-                                        // (including the first 8-bytes amount for optimization)
-            // uint32 EXTRA_LOCKTIME,   // tx locktime
-            // uint32 EXTRA_VERSION,    // tx version
     ) external {
-        Header storage header = headers[blockHash];
-        Transaction storage winner = _mustGetBlockWinner(header, memoHash);
+        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+        _requireState(winner.state, TxState.OUTPOINT);
 
         { // stack too deep
-        bytes32 outpointTxLE = winner.outpointTxLE;
-        require(outpointTxLE != 0, "PubKey or PKH already relayed, use claim instead");
         bytes32 txId = ValidateSPV.calculateTxId(
             _extractUint32(extra, EXTRA_VERSION),
             vin,
             vout,
             _extractUint32(extra, EXTRA_LOCKTIME));
-        require(outpointTxLE == txId, "outpoint tx mismatch");
+        require(winner.minerData == bytes20(txId), "outpoint tx mismatch");
         }
 
         { // stack too deep
         bytes memory output = vout.extractOutputAtIndex(winner.outpointIdx);
         bytes20 pkh = _extractPKH(output, _extractUint32(extra, EXTRA_PKH_IDX));
-        _reward(memoHash, winner.payer, pkh, winner.reward);
+        _reward(blockHash, memoHash, pkh);
         }
+    }
 
-        _cleanUpWinner(blockHash, memoHash);
+    function _requireState(TxState state, TxState expected) internal pure {
+        if (state == expected) return;
+        require(state != TxState.PKH, "!OUTPOINT: use claim instead");
+        require(state != TxState.OUTPOINT, "!PKH: use claimWithPrevTx instead");
+        require(state != TxState.CLAIMED, "already claimed");
     }
 
     function _mustGetBlockWinner(
-        Header  storage header,
-        bytes32         memoHash
+        bytes32 blockHash,
+        bytes32 memoHash
     ) internal view returns (Transaction storage winner) {
+        Header storage header = headers[blockHash];
         { // stack too deep
         uint32 timestamp = header.timestamp;
         require(timestamp != 0, "no such block");
@@ -99,33 +97,29 @@ contract PoR is DataStructure {
         require(winner.id != 0, "no tx commited");
     }
 
-    function _cleanUpWinner(bytes32 blockHash, bytes32 memoHash) internal {
-        Header storage header = headers[blockHash];
-        delete header.winner[memoHash];
-
-        if (header.minable > 1) {
-            header.minable--;
-        } else {
-            delete headers[blockHash];
-
-            // TODO: clean up and rate adjustment here
-        }
-    }
-
     /**
      * for PoR to pay for the miner
      */
     function _reward(
+        bytes32 blockHash,
         bytes32 memoHash,
-        address payer,
-        bytes20 pkh,
-        uint    amount
+        bytes20 pkh
     ) internal {
-        address payee = miners[pkh];
-        require(payee != address(0x0), "unregistered PKH");
-        uint paid = _claimReward(memoHash, payer, amount);
-        _payReward(payee, paid);    // reward the miner and upstream in the ref network
-        emit Reward(memoHash, payer, payee, paid);
+        address miner = miners[pkh];
+        require(miner != address(0x0), "unregistered PKH");
+        Transaction storage winner = headers[blockHash].winner[memoHash];
+        address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : winner.payer;
+        uint expectedReward = winner.reward;
+        uint reward = _claimReward(memoHash, payer, expectedReward * 2) / 2;
+        uint cutBack = ICommissionReceiver(address(this)).pay(miner, payer, reward);
+        reward += cutBack;
+        if (memoHash == ENDURIO_MEMO_HASH) {
+            _mint(miner, reward);
+        } else {
+            _transfer(address(this), miner, reward);
+        }
+        emit Reward(memoHash, payer, miner, reward);
+        _cleanUpWinner(blockHash, memoHash);
     }
 
     /**
@@ -137,7 +131,7 @@ contract PoR is DataStructure {
         uint    amount
     ) internal returns (uint) {
         if (memoHash == ENDURIO_MEMO_HASH) {
-            _mint(address(this), amount);
+            // _mint(address(this), amount);
             return amount;
         }
         Brand storage brand = brands[memoHash][payer];
@@ -151,21 +145,16 @@ contract PoR is DataStructure {
         return balance;
     }
 
-    /**
-     * reward the miner an amount of token, and commit another amount of token to the upstream referal
-     *
-     * Note: half of the reward is distributed to miner, the other half is for upstream commission.
-     */
-    function _payReward(address miner, uint amount) internal {
-        Node storage node = nodes[miner];
-        if (!node.exists()) {
-            _attach(miner, ROOT_ADDRESS);
+    /// duplicate with RefNetwork's
+    function _cleanUpWinner(bytes32 blockHash, bytes32 memoHash) internal {
+        Header storage header = headers[blockHash];
+        delete header.winner[memoHash];
+
+        if (header.minable > 1) {
+            header.minable--;
+        } else {
+            delete headers[blockHash];
         }
-        assert(node.exists());
-        uint commission = amount >> 1;
-        _transfer(address(this), miner, amount - commission); // safe
-        _payUpstream(node, commission);
-        epochTotalReward = util.addCap(epochTotalReward, amount);
     }
 
     function _extractPKH(
@@ -217,6 +206,7 @@ contract PoR is DataStructure {
 
         require(ValidateSPV.prove(txId, header.merkleRoot, merkleProof, _extractUint32(extra, EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
+        // TODO: remove EXTRA_OUTPUT_IDX and scan for the first OP_RET output
         // extract the brand from OP_RETURN
         Transaction storage winner = _processTxMemo(
             blockHash,
@@ -234,16 +224,20 @@ contract PoR is DataStructure {
 
         if (posPK > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
-            winner.pkh = _getPKH(input.slice(32+4+1+posPK, 33));
+            winner.state = TxState.PKH;
+            winner.minerData = _getPKH(input.slice(32+4+1+posPK, 33));
         } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
-            winner.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
+            winner.state = TxState.PKH;
+            winner.minerData = bytes20(input.slice(32+4+4, 20).toBytes32());
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
-            winner.pkh = _getPKH(input.slice(input.length-33-4, 33));
+            winner.state = TxState.PKH;
+            winner.minerData = _getPKH(input.slice(input.length-33-4, 33));
         } else {
+            winner.state = TxState.OUTPOINT;
+            winner.minerData = bytes20(input.extractInputTxIdLE());
             winner.outpointIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
-            winner.outpointTxLE = input.extractInputTxIdLE();
         }
 
         winner.id = txId;
@@ -256,9 +250,9 @@ contract PoR is DataStructure {
         bytes32 id,
         uint    reward,
         address payer,
-        bytes32 outpointTxLE,
+        bytes20 minerData,
         uint32  outpointIdx,
-        bytes20 pkh
+        TxState state
     ) {
         Header storage header = headers[blockHash];
         Transaction storage winner = header.winner[memoHash];
@@ -266,9 +260,9 @@ contract PoR is DataStructure {
             winner.id,
             winner.reward,
             winner.payer,
-            winner.outpointTxLE,
+            winner.minerData,
             winner.outpointIdx,
-            winner.pkh
+            winner.state
         );
     }
 
@@ -294,10 +288,6 @@ contract PoR is DataStructure {
             uint newRank = _txRank(blockHash, txId);
             // accept the same rank here to allow re-commiting the same tx to change the input index
             require(newRank <= oldRank, "better tx committed");
-            // clear the old data
-            delete winner.pkh;
-            delete winner.outpointIdx;
-            delete winner.outpointTxLE;
         } else {
             header.minable++; // increase the ref count for new brand
         }

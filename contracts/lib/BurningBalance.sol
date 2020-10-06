@@ -6,7 +6,7 @@ import "@openzeppelin/contracts/math/SafeMath.sol";
 import "./time.sol";
 
 /** 
- * The balance that being burnt overtime.
+ * A token balance that being burnt overtime.
  * Represented as a burning rate (uint192) and an expiration timestamp (uint64).
  */
 library BurningBalance {
@@ -15,11 +15,11 @@ library BurningBalance {
     using BurningBalance for uint;
 
     function pack(uint rate, uint expiration) internal pure returns (uint) {
-        return (rate << 192) | expiration;
+        return (rate << 64) | expiration;
     }
 
     function unpack(uint bb) internal pure returns (uint rate, uint expiration) {
-        return (bb >> 192, bb & MAX_UINT64);
+        return (bb >> 64, bb & MAX_UINT64);
     }
 
     /**
