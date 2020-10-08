@@ -5,7 +5,7 @@ import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
-import "./interface/ICommissionReceiver.sol";
+import "./interface/IRefNet.sol";
 import "./lib/util.sol";
 import "./DataStructure.sol";
 import "./lib/time.sol";
@@ -110,43 +110,11 @@ contract PoR is DataStructure {
         require(miner != address(0x0), "unregistered PKH");
         Transaction storage winner = headers[blockHash].winner[memoHash];
         address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : winner.payer;
-        uint expectedReward = winner.reward;
-        uint reward = _claimReward(memoHash, payer, expectedReward * 2) / 2;
-        uint cutBack = ICommissionReceiver(address(this)).pay(miner, payer, reward);
-        reward += cutBack;
-        if (memoHash == ENDURIO_MEMO_HASH) {
-            _mint(miner, reward);
-        } else {
-            _transfer(address(this), miner, reward);
-        }
-        emit Reward(memoHash, payer, miner, reward);
+        IRefNet(address(this)).reward(miner, payer, winner.reward, memoHash, blockHash);
         _cleanUpWinner(blockHash, memoHash);
+        // TODO: emit Disposable(blockHash, memoHash);
     }
 
-    /**
-     * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
-     */
-    function _claimReward(
-        bytes32 memoHash,
-        address payer,
-        uint    amount
-    ) internal returns (uint) {
-        if (memoHash == ENDURIO_MEMO_HASH) {
-            // _mint(address(this), amount);
-            return amount;
-        }
-        Brand storage brand = brands[memoHash][payer];
-        uint balance = brand.balance;
-        if (amount < balance) {
-            brand.balance -= amount; // safe
-            return amount;
-        }
-        delete brands[memoHash][payer];
-        emit Deactive(memoHash, payer);
-        return balance;
-    }
-
-    /// duplicate with RefNetwork's
     function _cleanUpWinner(bytes32 blockHash, bytes32 memoHash) internal {
         Header storage header = headers[blockHash];
         delete header.winner[memoHash];

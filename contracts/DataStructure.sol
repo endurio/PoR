@@ -14,6 +14,12 @@ contract DataStructure is ERC20 {
                                         // TODO: use ds to save a KECCAK on each proxy call
     address owner;                      // responsible for contract upgrade
 
+    // System Config //
+    Config config = Config(
+        COM_RATE_UNIT / 2,  // 1/2 of miner reward
+        1e9                 // levelStep: halves the commission every 1e9 of rent up the stream
+    );
+
     // BrandMarket //
     mapping(bytes32 => mapping(address => Brand)) internal brands;
 
@@ -24,27 +30,15 @@ contract DataStructure is ERC20 {
     mapping(address => Node) nodes;
     address root;                       // owner of the root node, can be changed by owner
 
-    // System Variables
-    /**
-     * @dev commission half for every globalLevelStep of rent up the stream.
-     * @dev globalLevelStep must never be zero.
-     */
-    uint globalLevelStep = 1;
-
-    // uint totalRent;          // total active rent of the network
-    uint epochEnd;
-    uint epochTotalReward;      // track the total reward for this epoch;
-    uint epochTotalRootC;       // track the total commission for root node for this epoch;
-
     // Poof of Reference //
     mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
     mapping(bytes32 => Header) internal headers;
 
     // constant
-    address constant ROOT_ADDRESS               = address(0x0);
-    address constant ROOT_PARENT                = address(0xFFfFfFffFFfffFFfFFfFFFFFffFFFffffFfFFFfF);
+    uint64  constant COM_RATE_UNIT  = 1 << 32;
 
     // events
+    event GlobalConfig(uint comRate, uint levelStep);
     event Active(
         bytes   indexed memo,
         address indexed payer,
@@ -59,13 +53,23 @@ contract DataStructure is ERC20 {
     event Reward(
         bytes32 indexed memoHash,
         address indexed payer,
-        address indexed payee,
-        uint            amount
+        address indexed miner,
+        uint            value
     );
     event CommissionAvailable(
         address indexed miner,
         bytes32 indexed memoHash,
         bytes32 indexed blockHash
+    );
+    event CommissionLost(
+        address indexed payer,
+        address indexed miner,
+        uint            value
+    );
+    event CommissionRoot(
+        address indexed payer,
+        address indexed miner,
+        uint            value
     );
 
     constructor() public ERC20("Endurio", "ENDR") {
@@ -77,6 +81,17 @@ contract DataStructure is ERC20 {
     receive() external payable {
         revert("No thanks!");
     }
+}
+
+struct Config {
+    // commission = reward * comRate / COM_RATE_UNIT;
+    uint64  comRate;
+
+    // commission halves every globalLevelStep of rent up the stream
+    // globalLevelStep must never be zero.
+    //     0: all commission go to the miner himself
+    //     1: almost all commission go to the first node with non-zero rent
+    uint192 levelStep;
 }
 
 struct Brand {

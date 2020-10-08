@@ -11,25 +11,25 @@ import "./lib/abdk/ABDKMath64x64.sol";
 import "@openzeppelin/contracts/math/Math.sol";
 import "./lib/time.sol";
 import "./interface/Initializable.sol";
-import "./interface/ICommissionReceiver.sol";
+import "./interface/IRefNet.sol";
 
 /**
  * Referral Network
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract RefNetwork is DataStructure, ICommissionReceiver, Initializable {
-    uint constant MAX_UINT64    = 0xFFFFFFFFFFFFFFFF;
-    uint constant MAX_INT64     = 0x7FFFFFFFFFFFFFFF;   // maximum int value ABDK Math64x64 can hold
-    uint constant MAX_UINT192   = (1<<192) - 1;
+contract RefNetwork is DataStructure, IRefNet, Initializable {
+    uint constant MAX_UINT32    = (1<<32)-1;
+    uint constant MAX_UINT64    = (1<<64)-1;
+    uint constant MAX_INT64     = (1<<63)-1;   // maximum int value ABDK Math64x64 can hold
+    uint constant MAX_UINT192   = (1<<192)-1;
 
     using BurningBalance for uint;
     using MaturingAddress for bytes32;
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
-    uint    constant ROOT_EXP           = 5; // root commssion ~> TotalMined / 2^5
-    int128  constant ROOT_EXP_64x64     = int128(ROOT_EXP << 64); // ABDKMath64x64.fromUInt(ROOT_EXP);
+    uint    constant ROOT_COM_RATE      = 32;       // root commission chance = 1/32
     uint    constant RENT_CD            = 1 weeks;
     uint    constant FREEZING_DURATION  = 1 weeks;  // node expired for this long can be flatten (by anyone)
 
@@ -40,13 +40,20 @@ contract RefNetwork is DataStructure, ICommissionReceiver, Initializable {
         root = msg.sender;
     }
 
-    function getRoot() external view returns (address) {
-        return root;
-    }
-
     function setRoot(address newRoot) external {
         require(msg.sender == root || msg.sender == owner, "owner or root only");
         root = newRoot;
+    }
+
+    function setGlobalConfig(uint64 comRate, uint192 levelStep) external {
+        require(msg.sender == root || msg.sender == owner, "owner or root only");
+        config.comRate = comRate;
+        config.levelStep = levelStep;
+        emit GlobalConfig(comRate, levelStep);
+    }
+
+    function getGlobalConfig() external view returns (uint64 comRate, uint192 levelStep) {
+        return (config.comRate, config.levelStep);
     }
 
     /**
@@ -113,61 +120,105 @@ contract RefNetwork is DataStructure, ICommissionReceiver, Initializable {
         prevParent = node.prevParent;
     }
 
-    function pay(
+    function reward(
         address miner,
         address payer,
-        uint amount
-    ) external override returns (uint cutBackCommission) {
+        uint amount,
+        bytes32 memoHash,
+        bytes32 seed
+    ) external override returns (bool ok) {
         require(msg.sender == address(this), "from claim only");
-        // TODO
-    }
-
-    /**
-     * @dev make sure this and _pay can never revert for root node
-     */
-    function _adaptGlobalLevelStep(uint rootC) internal {
-        uint S = globalLevelStep;
-        assert(S > 0);
-        uint targetS = _newTargetS(rootC, S, epochTotalReward);
-        if (targetS == 0) {
-            return; // no adaption this time
+        uint commission = util.scaleDown(amount, config.comRate, COM_RATE_UNIT);
+        uint claimable = _claimReward(memoHash, payer, amount+commission);
+        if (claimable < amount) {
+            amount = claimable;
+            commission = 0;
+        } else {
+            commission = claimable - amount;
         }
-        globalLevelStep = Math.average(S, targetS);
-        // reset the end of the next epoch
-        epochEnd = time.next(EPOCH);
-        delete epochTotalRootC;
-        delete epochTotalReward;
+        if (commission > 0) {
+            seed = keccak256(abi.encodePacked(memoHash, seed));
+            uint cutBack = _payCommission(miner, payer, commission, uint(seed));
+            amount += cutBack;
+        }
+        if (payer == address(0x0)) {
+            _mint(miner, amount);
+        } else {
+            _transfer(address(this), miner, amount);
+        }
+        emit Reward(memoHash, payer, miner, amount);
+        return true;    // go ahead and clean up the winning tx
     }
 
     /**
-     * @dev should never be reverted
-     * @return S*log_2(C/rootC)/ROOT_EXP or 0 to cancel the target adapting process
+     * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
      */
-    function _newTargetS(uint rootC, uint S, uint C) internal pure returns (uint) {
-        if (rootC <= 1) { // root got (almost) no commission
-            if (C <= 1) {
-                return 0; // too little data to process
+    function _claimReward(
+        bytes32 memoHash,
+        address payer,
+        uint    amount
+    ) internal returns (uint) {
+        if (memoHash == ENDURIO_MEMO_HASH) {
+            // _mint(address(this), amount);
+            return amount;
+        }
+        Brand storage brand = brands[memoHash][payer];
+        uint balance = brand.balance;
+        if (amount < balance) {
+            brand.balance -= amount; // safe
+            return amount;
+        }
+        delete brands[memoHash][payer];
+        emit Deactive(memoHash, payer);
+        return balance;
+    }
+
+    function _payCommission(
+        address miner,
+        address payer,
+        uint amount,
+        uint seed
+    ) internal returns (uint cutBackCommission) {
+        // there's always 1/32 chance that the commission will go to root
+        if (seed % ROOT_COM_RATE == 0) {
+            if (payer == address(0x0)) {
+                _mint(root, amount);
+            } else {
+                _transfer(address(this), root, amount);
             }
-            uint lc = util.mostSignificantBit(C); // lc = log2(C/rootC)
-            return S * lc / ROOT_EXP;
+            // this short-circuit slews the CommissionLost rate below
+            emit CommissionRoot(payer, miner, amount);
+            return 0;
         }
 
-        { // scope for local variables
-        uint c = C / rootC;
-        if (c > MAX_INT64) { // overflow 64x64
-            uint lc = util.mostSignificantBit(c); // lc = log2(C/rootC)
-            return S * lc / ROOT_EXP;
-        }
+        // TODO: short circuit for no parent and no balance
+        int128 x = int128(seed & MAX_UINT64);   // random 64x64 number in [0,1)
+        uint distance = x.log_2().neg().muluc(config.levelStep);
+
+        Node storage node = nodes[miner];
+        address noder;
+        for (uint rent; (rent = node.getRent()) < distance; node = nodes[noder]) {
+            distance -= rent;
+            noder = node.pickParent(seed);
+            if (noder == address(0x0)) {
+                emit CommissionLost(payer, miner, amount);
+                return 0;   // no commission paid, no cut back
+            }
         }
 
-        int128 c = ABDKMath64x64.divu(C, rootC);
-        int128 lc = c.log_2();
-        return lc.div(ROOT_EXP_64x64).muluc(S);
+        uint cutBack = util.scaleDown(amount, node.cutBackRate, MAX_UINT32);
+        if (payer == address(0x0)) {
+            _mint(noder, amount-cutBack);
+        } else {
+            _transfer(address(this), noder, amount-cutBack);
+        }
+        // emit Commission(noder, payer, miner)
+        return cutBack;
     }
 }
 
 library libnode {
-    uint constant MAX_UINT64 = 0xFFFFFFFFFFFFFFFF;
+    uint constant MAX_UINT64 = (1<<64)-1;
 
     using MaturingAddress for bytes32;
     using BurningBalance for uint;
@@ -199,13 +250,22 @@ library libnode {
 
     // TODO: function revertParentTransfer
 
-    // increase the node commission, the new value is safely capped at MAX_UINT256
-    function incCommissionCapped(Node storage n, uint commission) internal {
-        // n.commission = util.addCap(n.commission, commission);
+    // a node's weight
+    function getRent(Node storage n) internal view returns (uint) {
+        return n.balance.getRate();
     }
 
-    // a node's weight
-    function getWeight(Node storage n) internal view returns (uint) {
-        return n.balance.getRate();
+    // pick parent or prevParent using a random uint seed
+    function pickParent(Node storage n, uint seed) internal view returns (address) {
+        (address parent, uint duration, uint maturedTime) = n.parent.unpack();
+        if (time.reach(maturedTime)) {
+            return parent;  // fully matured, no luck require
+        }
+        uint elapsed = time.elapse(maturedTime - duration);
+        // it's ok to be a tiny bit biased toward parent
+        if (seed % duration < elapsed) {
+            return parent;  // lucky
+        }
+        return n.prevParent;
     }
 }

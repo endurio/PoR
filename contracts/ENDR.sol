@@ -57,15 +57,16 @@ contract ENDR is DataStructure {
         impls[0x495dd54b] = implPoR;    // registerMiner
         impls[0x0aa0738f] = implPoR;    // changeMiner
         impls[0x8129fc1c] = implRefNetwork;     // initialize
-        impls[0x5ca1e165] = implRefNetwork;     // getRoot
         impls[0x003ba1ed] = implRefNetwork;     // setRoot
+        impls[0xb0296b18] = implRefNetwork;     // setGlobalConfig
+        impls[0xcda92be4] = implRefNetwork;     // getGlobalConfig
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
         impls[0xb6b55f25] = implRefNetwork;     // deposit
         impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
         impls[0xf2a75fe4] = implRefNetwork;     // empty
         impls[0xb12a6852] = implRefNetwork;     // setRent
         impls[0xbafb3581] = implRefNetwork;     // getNodeDetails
-        impls[0xb3d76188] = implRefNetwork;     // pay
+        impls[0xf2be4140] = implRefNetwork;     // reward
     }
 
     function mustDelegateCall(address impl, bytes memory data) internal {

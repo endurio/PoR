@@ -443,28 +443,29 @@ contract("PoR", accounts => {
 })
 
 async function expectEventClaim(call, block, recipient, multiplier) {
-  let expectedReward = getExpectedReward(block);
+  let reward = getExpectedReward(block);
   if (multiplier) {
-    expectedReward *= BigInt(multiplier);
+    reward *= BigInt(multiplier);
   }
+  const commission = reward / BigInt(2);
 
   const receipt = await call;
-  expect(receipt.logs.length).to.equal(2, "claim must emit 2 events");
-  // expectEvent(receipt, 'Transfer', {
-  //   from: inst.address,
-  //   to: recipient,
-  //   value: expectedMinerReward.toString(),
-  // });
+  expect(receipt.logs.length).to.equal(3, "claim must emit 2 events");
+  expectEvent(receipt, 'CommissionLost', {
+    payer: ZERO_ADDRESS,
+    miner: recipient,
+    value: commission.toString(),
+  });
   expectEvent(receipt, 'Transfer', {
     from: ZERO_ADDRESS,
     to: recipient,
-    value: expectedReward.toString(),
+    value: reward.toString(),
   });
   expectEvent(receipt, 'Reward', {
     memoHash: '0x'+ENDURIO_HASH,
     payer: ZERO_ADDRESS,
-    payee: recipient,
-    amount: expectedReward.toString(),
+    miner: recipient,
+    value: reward.toString(),
   });
 }
 
