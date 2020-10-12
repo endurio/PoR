@@ -88,14 +88,9 @@ contract PoR is DataStructure {
         bytes32 memoHash
     ) internal view returns (Transaction storage winner) {
         Header storage header = headers[blockHash];
-        { // stack too deep
-        uint32 timestamp = header.timestamp;
-        require(timestamp != 0, "no such block");
-        require(!_minable(timestamp), "mining time not over");
-        }
-
+        require(!_minable(header.timestamp), "mining time not over");  // including cleaned up timestamp
         winner = header.winner[memoHash];
-        require(winner.id != 0, "no tx commited");
+        require(winner.id != 0, "!tx");
     }
 
     /**
@@ -111,18 +106,16 @@ contract PoR is DataStructure {
         Transaction storage winner = headers[blockHash].winner[memoHash];
         address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : winner.payer;
         IRefNet(address(this)).reward(miner, payer, winner.reward, memoHash, blockHash);
-        _cleanUpWinner(blockHash, memoHash);
-        // TODO: emit Disposable(blockHash, memoHash);
+        // TODO: removing _cleanUp seems to make the gas usage lower
+        _cleanUp(blockHash, memoHash);
     }
 
-    function _cleanUpWinner(bytes32 blockHash, bytes32 memoHash) internal {
+    function _cleanUp(bytes32 blockHash, bytes32 memoHash) internal {
         Header storage header = headers[blockHash];
         delete header.winner[memoHash];
 
-        if (header.brandCount > 1) {
-            header.brandCount--;
-        } else {
-            delete headers[blockHash];
+        if (header.relayer == msg.sender) {
+            delete headers[blockHash];  // TODO: save this for some other time
         }
     }
 
@@ -256,8 +249,6 @@ contract PoR is DataStructure {
             uint newRank = _txRank(blockHash, txId);
             // accept the same rank here to allow re-commiting the same tx to change the input index
             require(newRank <= oldRank, "better tx committed");
-        } else {
-            header.brandCount++; // increase the ref count for new brand
         }
 
         // for both new and replacing winner
@@ -310,7 +301,7 @@ contract PoR is DataStructure {
         return uint32((uint(packed) >> shift) & 0xFFFFFFFF);
     }
 
-    /// TODO: create an incentive for only 1 miner to relay the block header
+    // block data will be cleaned up when claim is called by the same sender of commitBlock
     function commitBlock(
         bytes calldata headerBytes
     ) external {
@@ -328,8 +319,8 @@ contract PoR is DataStructure {
 
         header.merkleRoot = headerBytes.extractMerkleRootLE().toBytes32();
         header.timestamp = timestamp;
+        header.relayer = msg.sender;
         header.target = target;
-        // TODO: emit Block(bytes32(blockHash))
     }
 
     /**

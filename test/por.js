@@ -393,7 +393,7 @@ contract("PoR", accounts => {
 
         // auto detect PKH position
         await expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH), block, txData.miner);
-        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), "no such block");
+        await expectRevert(utils.claimWithPrevTx(txData, ENDURIO_HASH), "!tx");
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
@@ -432,7 +432,7 @@ contract("PoR", accounts => {
 
         // auto detect PKH position
         await expectEventClaim(utils.claim(txData, ENDURIO_HASH), block, txData.miner);
-        await expectRevert(utils.claim(txData, ENDURIO_HASH), "no such block");
+        await expectRevert(utils.claim(txData, ENDURIO_HASH), "!tx");
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;

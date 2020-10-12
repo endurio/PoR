@@ -112,10 +112,8 @@ struct Node {
 struct Header {
     bytes32 merkleRoot;
     uint    target;
+    address relayer;
     uint32  timestamp;
-
-    // PoR data
-    uint32  brandCount; // ref count for winner keys
     mapping(bytes32 => Transaction) winner; // keccak(brand.memo) => winning tx
 }
 
