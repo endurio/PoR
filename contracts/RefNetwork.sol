@@ -41,12 +41,12 @@ contract RefNetwork is DataStructure, IRefNet, Initializable {
     }
 
     function setRoot(address newRoot) external {
-        require(msg.sender == root || msg.sender == owner, "owner or root only");
+        require(msg.sender == root || msg.sender == owner, "!owner");
         root = newRoot;
     }
 
     function setGlobalConfig(uint64 comRate, uint192 levelStep) external {
-        require(msg.sender == root || msg.sender == owner, "owner or root only");
+        require(msg.sender == root || msg.sender == owner, "!owner");
         config.comRate = comRate;
         config.levelStep = levelStep;
         emit GlobalConfig(comRate, levelStep);

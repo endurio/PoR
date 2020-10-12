@@ -96,7 +96,7 @@ contract ENDR is DataStructure {
      * set the implementation contract for a single function signature.
      */
     function setImplementation(bytes32 sign, address impl) external {
-        require(msg.sender == owner, "owner only");
+        require(msg.sender == owner, "!owner");
         // TODO: verify impl is a contract
         _setImplementation(sign, impl);
     }
@@ -106,7 +106,7 @@ contract ENDR is DataStructure {
      * packed in the signs from the left.
      */
     function setImplementations(bytes32 signs, address impl) external {
-        require(msg.sender == owner, "owner only");
+        require(msg.sender == owner, "!owner");
         // TODO: verify impl is a contract
         bytes32 ss = signs;
         for (uint i = 0; i < 8; ++i) {
@@ -129,7 +129,7 @@ contract ENDR is DataStructure {
     }
 
     function setOwner(address newOwner) external {
-        require(msg.sender == owner, "owner only");
+        require(msg.sender == owner, "!owner");
         owner = newOwner;
     }
 

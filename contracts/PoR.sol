@@ -156,7 +156,7 @@ contract PoR is DataStructure {
 
         { // stack too deep
         uint32 timestamp = header.timestamp;
-        require(timestamp != 0, "no such block");
+        require(timestamp != 0, "!block");
         require(_minable(timestamp), "mining time over");
         }
 

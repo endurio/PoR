@@ -282,7 +282,7 @@ contract("PoR", accounts => {
 
         await expectRevert(
           instPoR.commitTx('0x'+blockHash.reverseHex(), '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
-          'no such block',
+          '!block',
           );
 
         await expectRevert(
