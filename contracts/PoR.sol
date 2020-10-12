@@ -119,8 +119,8 @@ contract PoR is DataStructure {
         Header storage header = headers[blockHash];
         delete header.winner[memoHash];
 
-        if (header.minable > 1) {
-            header.minable--;
+        if (header.brandCount > 1) {
+            header.brandCount--;
         } else {
             delete headers[blockHash];
         }
@@ -257,7 +257,7 @@ contract PoR is DataStructure {
             // accept the same rank here to allow re-commiting the same tx to change the input index
             require(newRank <= oldRank, "better tx committed");
         } else {
-            header.minable++; // increase the ref count for new brand
+            header.brandCount++; // increase the ref count for new brand
         }
 
         // for both new and replacing winner

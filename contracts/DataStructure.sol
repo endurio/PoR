@@ -115,7 +115,7 @@ struct Header {
     uint32  timestamp;
 
     // PoR data
-    int minable; // ref count for winner keys
+    int brandCount; // ref count for winner keys
     mapping(bytes32 => Transaction) winner; // keccak(brand.memo) => winning tx
 }
 
