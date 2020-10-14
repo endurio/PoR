@@ -31,7 +31,7 @@ contract PoR is DataStructure {
     using BTCUtils for bytes;
     using BTCUtils for uint256;
     using BytesLib for bytes;
-    // using SafeMath for uint256;
+    using Packed   for bytes32;
 
     function claim(
         bytes32 blockHash,  // big-endian
@@ -61,17 +61,13 @@ contract PoR is DataStructure {
         _requireState(winner.state, TxState.OUTPOINT);
 
         { // stack too deep
-        bytes32 txId = ValidateSPV.calculateTxId(
-            _extractUint32(extra, EXTRA_VERSION),
-            vin,
-            vout,
-            _extractUint32(extra, EXTRA_LOCKTIME));
+        bytes32 txId = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
         require(winner.minerData == bytes20(txId), "outpoint tx mismatch");
         }
 
         { // stack too deep
         bytes memory output = vout.extractOutputAtIndex(winner.outpointIdx);
-        bytes20 pkh = _extractPKH(output, _extractUint32(extra, EXTRA_PKH_POS));
+        bytes20 pkh = _extractPKH(output, extra.ui32(EXTRA_PKH_POS));
         _reward(blockHash, memoHash, pkh);
         }
     }
@@ -160,28 +156,24 @@ contract PoR is DataStructure {
         require(_minable(timestamp), "mining time over");
         }
 
-        bytes32 txId = ValidateSPV.calculateTxId(
-            _extractUint32(extra, EXTRA_VERSION),
-            vin,
-            vout,
-            _extractUint32(extra, EXTRA_LOCKTIME));
+        bytes32 txId = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
 
-        require(ValidateSPV.prove(txId, header.merkleRoot, merkleProof, _extractUint32(extra, EXTRA_MERKLE_IDX)), "invalid merkle proof");
+        require(ValidateSPV.prove(txId, header.merkleRoot, merkleProof, extra.ui32(EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
         // extract the brand from the first output with OP_RETURN
         Transaction storage winner = _processTxMemo(
             blockHash,
             txId,
             vout.extractFirstOpReturn(),
-            _extractUint32(extra, EXTRA_MEMO_LENGTH),
+            extra.ui32(EXTRA_MEMO_LENGTH),
             payer
         );
 
         // TODO: handle manual miner address in tx memo
 
         // store the outpoint to claim the reward later
-        bytes memory input = vin.extractInputAtIndex(_extractUint32(extra, EXTRA_INPUT_IDX));
-        uint posPK = _extractUint32(extra, EXTRA_PUBKEY_POS);
+        bytes memory input = vin.extractInputAtIndex(extra.ui32(EXTRA_INPUT_IDX));
+        uint posPK = extra.ui32(EXTRA_PUBKEY_POS);
 
         if (posPK > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
@@ -295,10 +287,6 @@ contract PoR is DataStructure {
             }
             result = result * 10 + (c - 48);
         }
-    }
-
-    function _extractUint32(bytes32 packed, uint shift) internal pure returns (uint32) {
-        return uint32((uint(packed) >> shift) & 0xFFFFFFFF);
     }
 
     // block data will be cleaned up when claim is called by the same sender of commitBlock

@@ -64,3 +64,13 @@ library util {
         if (x >= 0x2) r += 1; // No need to shift x anymore
     }
 }
+
+library Packed {
+    function ui32(bytes32 packed, uint bitOffset) internal pure returns (uint32) {
+        return uint32(extract(packed, bitOffset, (1<<32)-1));
+    }
+
+    function extract(bytes32 packed, uint bitOffset, uint bitMask) internal pure returns (uint) {
+        return (uint(packed) >> bitOffset) & bitMask;
+    }
+}
