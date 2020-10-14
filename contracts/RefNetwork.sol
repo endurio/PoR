@@ -3,7 +3,7 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
-import "./lib/util.sol";
+import "./lib/CapMath.sol";
 import "./lib/BurningBalance.sol";
 import "./lib/MaturingAddress.sol";
 import "./DataStructure.sol";
@@ -128,7 +128,7 @@ contract RefNetwork is DataStructure, IRefNet, Initializable {
         bytes32 seed
     ) external override returns (bool ok) {
         require(msg.sender == address(this), "from claim only");
-        uint commission = util.scaleDown(amount, config.comRate, COM_RATE_UNIT);
+        uint commission = CapMath.scaleDown(amount, config.comRate, COM_RATE_UNIT);
         uint claimable = _claimReward(memoHash, payer, amount+commission);
         if (claimable < amount) {
             amount = claimable;
@@ -206,7 +206,7 @@ contract RefNetwork is DataStructure, IRefNet, Initializable {
             }
         }
 
-        uint cutBack = util.scaleDown(amount, node.cutBackRate, MAX_UINT32);
+        uint cutBack = CapMath.scaleDown(amount, node.cutBackRate, MAX_UINT32);
         if (payer == address(0x0)) {
             _mint(noder, amount-cutBack);
         } else {

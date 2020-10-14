@@ -6,7 +6,7 @@ import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";
 import {ValidateSPV} from "./lib/bitcoin-spv/contracts/ValidateSPV.sol";
 import "./interface/IRefNet.sol";
-import "./lib/util.sol";
+import "./lib/CapMath.sol";
 import "./DataStructure.sol";
 import "./lib/time.sol";
 
@@ -284,7 +284,7 @@ contract PoR is DataStructure {
         Brand storage brand = brands[memoHash][payer];
         uint payRate = brand.payRate;
         require(payRate > 0, "brand not active");
-        return util.mulCap(payRate, rewardRate) / ENDURIO_PAYRATE;
+        return CapMath.mul(payRate, rewardRate) / ENDURIO_PAYRATE;
     }
 
     function _readUint(bytes memory b, uint start) internal pure returns (uint result) {
@@ -356,7 +356,7 @@ contract PoR is DataStructure {
     }
 
     function _getPKH(
-        bytes memory compressedPubkey    // compressed, refixed 33-bytes pubic key
+        bytes memory compressedPubkey    // compressed, prefixed 33-bytes pubic key
     ) internal pure returns (bytes20 pkh) {
         return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
     }

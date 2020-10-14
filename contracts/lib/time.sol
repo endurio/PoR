@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.2;
 
-import "./util.sol";
+import "./CapMath.sol";
 
 library time {
     function blockTimestamp() internal view returns (uint) {
@@ -13,18 +13,18 @@ library time {
     }
 
     function next(uint duration) internal view returns (uint) {
-        return util.addCap(blockTimestamp(), duration);
+        return CapMath.add(blockTimestamp(), duration);
     }
 
     function ago(uint duration) internal view returns (uint) {
-        return util.subCap(blockTimestamp(), duration);
+        return CapMath.sub(blockTimestamp(), duration);
     }
 
     function elapse(uint timestamp) internal view returns (uint) {
-        return util.subCap(blockTimestamp(), timestamp);
+        return CapMath.sub(blockTimestamp(), timestamp);
     }
 
     function remain(uint timestamp) internal view returns (uint) {
-        return util.subCap(timestamp, blockTimestamp());
+        return CapMath.sub(timestamp, blockTimestamp());
     }
 }
