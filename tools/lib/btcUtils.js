@@ -5,8 +5,9 @@ const Btc = require('bitcoinjs-lib');
 const rp = require('request-promise');
 const coinSelect = require('coinselect');
 const WIFKEY = require('wif');
+const fetch = require("node-fetch");
 const homedir = require('os').homedir();
-const { BlockCypherAPIKey, CryptoAPIsAPIKey } = require(`${homedir}/.config/por/send.config.js`);
+const { CryptoAPIsAPIKey } = require(`${homedir}/.config/por/send.config.js`);
 
 const getPartURLCryptoAPI = (symbol) => {
     let part
@@ -22,24 +23,6 @@ const getPartURLCryptoAPI = (symbol) => {
             break;
         default:
             part = "btc/mainnet"
-            break;
-    }
-    return part
-}
-const getPartURLBlockcypher = (symbol) => {
-    let part
-    switch (symbol) {
-        case "BTC":
-            part = "btc/main"
-            break;
-        case "LTC":
-            part = "ltc/main"
-            break;
-        case "BTC-TEST":
-            part = "btc/test3"
-            break;
-        default:
-            part = "btc/main"
             break;
     }
     return part
@@ -114,24 +97,17 @@ exports.btcUtils = {
     },
 
     async getUnspentTxs (symbol, address) {
-        let part = getPartURLBlockcypher(symbol);
-        let url = `https://api.blockcypher.com/v1/${part}/addrs/${address}?unspentOnly=true`
-        if (BlockCypherAPIKey) {
-            url = url + `&token=${BlockCypherAPIKey}`
-        }
-        const requestOptions = {
-            method: 'GET',
-            uri: url,
-            qs: {
-            },
-            json: true,
-        };
-    
-        let rs = await rp(requestOptions);
-        if (!rs) return [];
-        let txs = rs.txrefs ? rs.unconfirmed_txrefs ? rs.txrefs.concat(rs.unconfirmed_txrefs) : rs.txrefs : rs.unconfirmed_txrefs ? rs.unconfirmed_txrefs : '' ;
-    
-        return txs;
+        let part = getPartURLCryptoAPI(symbol);
+        let url = `https://api.cryptoapis.io/v1/bc/${part}/address/${address}/unspent-transactions`
+        let rs = await fetch(url, {
+            method: "GET",
+            headers: {
+                "Content-Type": "application/json",
+                "X-API-Key": CryptoAPIsAPIKey,
+            }
+        })
+        let data = await rs.json()
+        return data.payload
     },
 
     async getTxHexFromTxHash (txHash, symbol) {

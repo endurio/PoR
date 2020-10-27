@@ -32,6 +32,7 @@
     "eth-gas-reporter": "^0.2.17",
     "it-each": "^0.4.0",
     "moment": "^2.27.0",
+    "node-fetch": "^2.6.1",
     "request-promise": "^4.2.6"
   },
   "private": true,
