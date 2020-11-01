@@ -36,20 +36,30 @@ async function searchForInput(utxos, maxBlocks = 6) {
         const block = await btcUtils.requestCryptoAPI(symbol, `blocks/${n}`)
         for (const recipient of block.tx) {
             for (const utxo of utxos) {
-                const preimage = utxo.txid + recipient
-                const hash = web3.utils.keccak256(Buffer.from(preimage, 'hex'))
-                const hit = parseInt(hash.substring(hash.length-2), 16) % RecipientRate === 0
-                if (hit) {
-                    utxo.recipients.push(recipient)
-                    if (utxo.recipients.length >= MaxOutput) {
-                        return utxo
-                    }
+                if (!isHit(utxo.txid, recipient)) {
+                    continue
+                }
+                // check for OP_RET in recipient tx
+                const tx = await btcUtils.requestCryptoAPI(symbol, `txs/txid/${recipient}`)
+                const hasOpRet = tx.txouts.some(o => o.script.hex.startsWith('6a'))   // OP_RET = 0x6a
+                if (hasOpRet) {
+                    continue
+                }
+                utxo.recipients.push(tx)
+                if (utxo.recipients.length >= MaxOutput) {
+                    return utxo
                 }
             }
         }
     }
     const utxoWithMostRecipient = utxos.reduce((prev, current) => prev.recipients.length > current.recipients.length ? prev : current)
     return utxoWithMostRecipient
+}
+
+function isHit(txid, recipient) {
+    const preimage = txid + recipient
+    const hash = web3.utils.keccak256(Buffer.from(preimage, 'hex'))
+    return parseInt(hash.substring(hash.length-2), 16) % RecipientRate === 0
 }
 
 doIt()
