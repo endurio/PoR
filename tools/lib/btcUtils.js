@@ -96,32 +96,30 @@ exports.btcUtils = {
         return this.getBtcAccount(typeCoinInfo, privateKey, isSegWit);;
     },
 
-    async getUnspentTxs (symbol, address) {
-        let part = getPartURLCryptoAPI(symbol);
-        let url = `https://api.cryptoapis.io/v1/bc/${part}/address/${address}/unspent-transactions`
-        let rs = await fetch(url, {
+    async requestCryptoAPI(symbol, path) {
+        const part = getPartURLCryptoAPI(symbol);
+        const url = `https://api.cryptoapis.io/v1/bc/${part}/${path}`
+        const rs = await fetch(url, {
             method: "GET",
             headers: {
                 "Content-Type": "application/json",
                 "X-API-Key": CryptoAPIsAPIKey,
             }
         })
-        let data = await rs.json()
+        const data = await rs.json()
         return data.payload
     },
 
+    getLatestBlock(symbol) {
+        return this.requestCryptoAPI(symbol, 'blocks/latest')
+    },
+
+    getUnspentTxs (symbol, address) {
+        return this.requestCryptoAPI(symbol, `address/${address}/unspent-transactions`)
+    },
+
     async getTxHexFromTxHash (txHash, symbol) {
-        let part = getPartURLCryptoAPI(symbol);
-        let url = `https://api.cryptoapis.io/v1/bc/${part}/txs/raw/txid/${txHash}`
-        let rs = await fetch(url, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-                "X-API-Key": CryptoAPIsAPIKey,
-            }
-        })
-        let data = await rs.json();
-        return data.payload.hex;
+        return (await this.requestCryptoAPI(symbol, `txs/raw/txid/${txHash}`)).hex
     },
 
     async buildRawTx(utxos, WIF, network, targets, feeRate, changeAddress, data, isSegWit, symbol, sequence, skipSigning = false) {
