@@ -132,9 +132,9 @@ contract("BrandMarket", accounts => {
 
     it("de-activate an expired brand", async() => {
       const {balance, expiration} = await instBM.getCampaignDetails(FOOBAR_HASH, sender.address)
-      await time.increaseTo(expiration-1) // one sec before expired
+      await time.increaseTo(expiration-30) // 30s before expired
       await expectRevert(instBM.deactivate(FOOBAR_HASH), '!expired')
-      await time.increase(1)              // just expired
+      await time.increaseTo(expiration)    // just expired
       const receipt = await instBM.deactivate(FOOBAR_HASH)
       expectEvent(receipt, 'Deactive', {
         memoHash: FOOBAR_HASH,
