@@ -2,6 +2,7 @@ const _ = require('lodash');
 const { btcUtils } = require('./lib/btcUtils');
 const { decShift } = require('./lib/big');
 const Btc = require('bitcoinjs-lib');
+const prompt = require('prompt');
 
 const Web3 = require('web3')
 const web3 = new Web3()
@@ -31,11 +32,11 @@ const FEE_RATE = {
 }
 
 const BOUNTY = {
-    'BTC-TEST': 136,
+    'BTC-TEST': 613,
 }
 
 const FEE = {
-    'BTC-TEST': 500,
+    'BTC-TEST': 999,
 }
 
 async function doIt() {
@@ -83,6 +84,14 @@ async function doIt() {
 
     console.error('fee', psbt.getFee())
     console.error('feeRate', psbt.getFeeRate(), psbt.getFee() / tx.toBuffer().length)
+
+    prompt.start();
+    prompt.get('send', (err, result) => {
+        if (err) throw err
+        if (['y','Y'].includes(result.send)) {
+            btcUtils.sendRawTx(symbol, tx.toHex()).then(txHash => console.error('Tx Sent', txHash))
+        }
+    });
 }
 
 async function build(psbt, inputs, recipients, sender) {
