@@ -93,6 +93,7 @@ contract PoR is DataStructure {
         bytes32 blockHash,  // big-endian
         bytes32 memoHash
     ) external view returns (
+        bool    claimable,
         bytes32 id,
         uint    reward,
         address payer,
@@ -100,8 +101,10 @@ contract PoR is DataStructure {
         uint32  outpointIdx,
         TxState state
     ) {
-        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+        Header storage header = headers[blockHash];
+        Transaction storage winner = header.winner[memoHash];
         return (
+            !_minable(header.timestamp),
             winner.id,
             winner.reward,
             winner.payer,
