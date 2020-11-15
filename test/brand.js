@@ -68,9 +68,11 @@ contract("BrandMarket", accounts => {
       expect(balance).to.be.bignumber.equal(new BN(274882101312), "should some coin be mined")
     })
   })
+  function mineSomeCoin() {
+    return mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')
+  }
 
-  async function mineSomeCoin() {
-    const txHash = '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1'
+  async function mine(txHash) {
     const txData = txs[txHash]
     const blockData = blocks[txData.block]
     const block = bitcoinjs.Block.fromHex(blockData)
@@ -78,9 +80,9 @@ contract("BrandMarket", accounts => {
     await instPoR.commitBlock('0x'+header)
     await utils.commitTx(txHash, ENDURIO)
     await time.increaseTo(block.timestamp + 60*60)
-    const key = keys.find(k => k.address == txData.miner)
-    await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS) // register and set the recipient        
+    const miner = keys.find(k => k.address == txData.miner)
+    await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient        
     await utils.claimWithPrevTx(txData, ENDURIO_HASH)
-    return key;
+    return miner;
   }
 })
