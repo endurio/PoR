@@ -28,19 +28,6 @@ const getPartURLCryptoAPI = (symbol) => {
     return part
 }
 
-const getNetwork = (coinType) => {
-    let coinInfo = ci(coinType);
-    let network = {
-        messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
-        bech32: coinInfo.bech32,
-        bip32: coinInfo.versions.bip32,
-        pubKeyHash: coinInfo.versions.public,
-        scriptHash: coinInfo.versions.scripthash,
-        wif: coinInfo.versions.private,
-    };
-    return network;
-};
-
 exports.btcUtils = {
     derivePathPrefix(typeCoinInfo, isSegWit = false) {
         const coinInfo = ci(typeCoinInfo);
@@ -76,7 +63,7 @@ exports.btcUtils = {
                 WIF = privateData.wif
             }
             if (isSegWit) {
-                const network = getNetwork(typeCoinInfo)
+                const network = this.getNetwork(typeCoinInfo)
                 const keyPair = Btc.ECPair.fromWIF(
                     WIF,
                     network
@@ -120,6 +107,19 @@ exports.btcUtils = {
 
     async getTxHexFromTxHash (txHash, symbol) {
         return (await this.requestCryptoAPI(symbol, `txs/raw/txid/${txHash}`)).hex
+    },
+
+    getNetwork (symbol) {
+        let coinInfo = ci(symbol);
+        let network = {
+            messagePrefix: coinInfo.messagePrefix ? coinInfo.messagePrefix : '',
+            bech32: coinInfo.bech32,
+            bip32: coinInfo.versions.bip32,
+            pubKeyHash: coinInfo.versions.public,
+            scriptHash: coinInfo.versions.scripthash,
+            wif: coinInfo.versions.private,
+        };
+        return network;
     },
 
     async buildRawTx(utxos, WIF, network, targets, feeRate, changeAddress, data, isSegWit, symbol, sequence, skipSigning = false) {
@@ -234,7 +234,7 @@ exports.btcUtils = {
         const { typeCoinInfo, privateKey, to, amount, symbol, gasPrice, isSegWit, data } = txParams
         const address = this.getBtcAccount(typeCoinInfo, privateKey, isSegWit);
         const WIF = privateKey.wif
-        const network = getNetwork(typeCoinInfo);
+        const network = this.getNetwork(typeCoinInfo);
 
         let toTransfer = new BigNumber(amount);
         toTransfer = parseFloat(toTransfer)
