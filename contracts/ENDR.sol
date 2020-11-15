@@ -51,6 +51,7 @@ contract ENDR is DataStructure {
         impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
         impls[0x84cc9dfb] = implPoR;    // claim
         impls[0x94457260] = implPoR;    // claimWithPrevTx
+        impls[0xcc569628] = implPoR;    // getWinner
         impls[0x84c74f05] = implPoR;    // commitTx
         impls[0xddcf8cd8] = implPoR;    // getBlockWinner
         impls[0xd02898cf] = implPoR;    // commitBlock

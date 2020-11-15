@@ -89,6 +89,28 @@ contract PoR is DataStructure {
         require(winner.id != 0, "!tx");
     }
 
+    function getWinner(
+        bytes32 blockHash,  // big-endian
+        bytes32 memoHash
+    ) external view returns (
+        bytes32 id,
+        uint    reward,
+        address payer,
+        bytes20 minerData,
+        uint32  outpointIdx,
+        TxState state
+    ) {
+        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+        return (
+            winner.id,
+            winner.reward,
+            winner.payer,
+            winner.minerData,
+            winner.outpointIdx,
+            winner.state
+        );
+    }
+
     /**
      * for PoR to pay for the miner
      */
