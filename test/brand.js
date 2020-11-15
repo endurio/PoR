@@ -152,14 +152,14 @@ contract("BrandMarket", accounts => {
     return mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')
   }
 
-  async function mine(txHash) {
+  async function mine(txHash, brandPayer = ZERO_ADDRESS) {
     const txData = txs[txHash]
     const blockData = blocks[txData.block]
     const header = blockData.substring(0, 160)
     await instPoR.commitBlock('0x'+header)
     const {block, proofs, extra, vin, vout, memo} = utils.prepareCommitTx(txHash);
     const blockHash = block.getId();
-    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, ZERO_ADDRESS);
+    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, brandPayer);
     await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
     await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient        
