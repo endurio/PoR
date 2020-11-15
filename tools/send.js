@@ -1,4 +1,7 @@
+const _ = require('lodash');
 const { btcUtils } = require('./lib/btcUtils');
+const { decShift } = require('./lib/big');
+const Btc = require('bitcoinjs-lib');
 
 const Web3 = require('web3')
 const web3 = new Web3()
@@ -13,6 +16,11 @@ const accs = [
     accUTBSegwit,
 ]
 
+const ECPairs = {
+    [accUTALegacy]: Btc.ECPair.fromPrivateKey(Buffer.from('443F917B8486E3F61320660B0F5F425A4A2C36FD658ECC325B755721C040D606', 'hex')),
+}
+
+const memo = 'foobar'
 const symbol = 'BTC-TEST'
 const MaxOutput = 8
 const RecipientRate = 32
@@ -22,9 +30,97 @@ const feeRate = {
 }
 
 async function doIt() {
-    const utxos = await btcUtils.getUnspentTxs(symbol, accUTALegacy)
+    const sender = accUTALegacy
+    console.log('get UTXO', sender)
+    const utxos = await btcUtils.getUnspentTxs(symbol, sender)
+    console.log('search for best input')
     const input = await searchForInput(utxos)
-    console.error(input)
+    console.log('found best input')
+    if (!input.recipients || input.recipients.length === 0) {
+        throw 'no eligible recipient'
+    }
+
+    console.log('sort the best input into the start of the input list')
+    // move the found input to the first of the array
+    const recipients = input.recipients
+    const inputs = [input]
+    utxos.forEach(o => {
+        delete o.recipients
+        if (o.txid !== input.txid || o.vout !== input.vout) {
+            inputs.push(o)
+        }
+    })
+
+    console.log('create the PSBT object')
+    const network = btcUtils.getNetwork(symbol)
+    const psbt = new Btc.Psbt({network});
+
+    console.log('add the memo output')
+    const data = Buffer.from(memo, 'utf8')
+    const dataScript = Btc.payments.embed({data:[data]})
+    psbt.addOutput({
+        script: dataScript.output,
+        value: 0,
+    })
+
+    console.log('build the mining outputs and required inputs')
+    await build(psbt, inputs, recipients, sender)
+
+    console.error('fee', psbt.getFee())
+    console.error('feeRate', psbt.getFeeRate())
+
+    console.error('tx:', psbt.extractTransaction())
+}
+
+async function build(psbt, inputs, recipients, sender) {
+    let inValue = 0
+    let outValue = 0
+
+    async function buildWithoutChange(psbt) {
+        let recIdx = 0
+        for (const input of inputs) {
+            const tx_hex = await btcUtils.getTxHexFromTxHash(input.txid, symbol)
+            psbt.addInput({
+                hash: input.txid,
+                index: input.vout,
+                // non-segwit inputs now require passing the whole previous tx as Buffer
+                nonWitnessUtxo: Buffer.from(tx_hex, 'hex'),
+            })
+            // psbt.signInput(psbt.txInputs.length-1, ECPairs[sender])
+            inValue += parseInt(decShift(input.amount, 8))
+
+            for (let i = recIdx; i < recipients.length; ++i) {
+                const rec = recipients[i]
+                const output = rec.txouts[rec.txouts.length-1]
+                const amount = 2340000 // TODO: calculate this
+                if (outValue + amount > inValue) {
+                    break;  // need more input
+                }
+                outValue += amount
+                psbt.addOutput({
+                    script: Buffer.from(output.script.hex, 'hex'),
+                    value: amount,
+                })
+                if (psbt.txOutputs.length >= MaxOutput) {
+                    console.log('recipients list exhausted')
+                    return
+                }
+            }
+        }
+        console.log('utxo list exhausted')
+    }
+
+    await buildWithoutChange(psbt)
+
+    // assert(inValue > outValue)
+    psbt.addOutput({
+        address: sender,
+        value: inValue - outValue,
+    })
+
+    psbt.signAllInputs(ECPairs[sender])
+
+    return psbt.finalizeAllInputs()
 }
 
 async function searchForInput(utxos, maxBlocks = 6) {
