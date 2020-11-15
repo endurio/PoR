@@ -61,7 +61,7 @@ contract("BrandMarket", accounts => {
       const key = await mineSomeCoin()
       expect(utils.addressCompare(key.address, sender.address)).to.equal(0, "should the miner address is the truffle test account")
       const balance = await inst.balanceOf(sender.address)
-      expect(balance).to.be.bignumber.greaterThan(new BN(0), "should some coin be mined")
+      expect(balance).to.be.bignumber.equal(new BN(274882101312), "should some coin be mined")
     })
   })
 
