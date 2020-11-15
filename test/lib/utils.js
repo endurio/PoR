@@ -41,7 +41,7 @@ module.exports = {
   },
 
   commitTx(txHash, brand) {
-    const [block, proofs, extra, vin, vout] = this.prepareCommitTx(txHash, brand);
+    const {block, proofs, extra, vin, vout} = this.prepareCommitTx(txHash, brand);
     const blockHash = block.getId();
     return instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, ZERO_ADDRESS);
   },
@@ -55,11 +55,18 @@ module.exports = {
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
     const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
 
-    const memo = findMemo(tx.outs)
+    let memo = findMemo(tx.outs)
     let memoLength = 0;
     if (memo) {
-      expect(memo.slice(0, brand.length)).to.equal(brand.toString(), 'unknown memo')
-      memoLength = memo.length > brand.length ? brand.length : 0;
+      if (brand) {
+        expect(memo.slice(0, brand.length)).to.equal(brand.toString(), 'unknown memo')
+        memoLength = memo.length > brand.length ? brand.length : 0;
+      } else {
+        if (memo.indexOf(' ') > 0) {
+          memo = memo.substring(0, memo.indexOf(' '))
+          memoLength = memo.length
+        }
+      }
     }
 
     let extra =
@@ -72,7 +79,7 @@ module.exports = {
       locktime.toString(16).pad(8).reverseHex() +
       version.toString(16).pad(8).reverseHex();
 
-    return [block, proofs, extra, vin, vout];
+    return {block, proofs, extra, vin, vout, memo};
   },
 
   claim(txData, brandHash) {

@@ -109,7 +109,7 @@ contract("PoR", accounts => {
     })
 
     async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
-      const [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
+      const {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
       const blockHash = block.getId();
       await instPoR.commitBlock('0x'+blocks[blockHash].substring(0, 160));
 
@@ -201,7 +201,7 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
       ]
       for (const txHash of commitTxs) {
-        const [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
+        const {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         const txData = txs[txHash];
@@ -254,7 +254,7 @@ contract("PoR", accounts => {
         'e8c8a653e4bdcad2556c5dc93e1261e89b6eb69c5349a3f49360db68208699d2',
       ]
       for (const txHash of commitTxs) {
-        let [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
+        let {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         await expectRevert(
@@ -277,7 +277,7 @@ contract("PoR", accounts => {
       ]
 
       for (const txHash of commitTxs) {
-        let [block, proofs, extra, vin, vout] = utils.prepareCommitTx(txHash, ENDURIO);
+        let {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         await expectRevert(

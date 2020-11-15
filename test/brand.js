@@ -7,6 +7,8 @@ const snapshot = require('./lib/snapshot');
 const { keys, blocks, txs } = require('./data/por');
 const utils = require('./lib/utils');
 const { decShift } = require('../tools/lib/big');
+const Web3 = require('web3')
+const web3 = new Web3()
 
 const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
@@ -16,9 +18,6 @@ let inst;
 let instPoR;
 let instRN;
 let instBM;
-
-const ENDURIO = Buffer.from('endur.io');
-const ENDURIO_HASH = '0x022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147';  // KECCAK('endur.io')
 
 const FOOBAR = Buffer.from('foobar');
 const FOOBAR_HEX = '0x'+FOOBAR.toString('hex');
@@ -156,14 +155,16 @@ contract("BrandMarket", accounts => {
   async function mine(txHash) {
     const txData = txs[txHash]
     const blockData = blocks[txData.block]
-    const block = bitcoinjs.Block.fromHex(blockData)
     const header = blockData.substring(0, 160)
     await instPoR.commitBlock('0x'+header)
-    await utils.commitTx(txHash, ENDURIO)
+    const {block, proofs, extra, vin, vout, memo} = utils.prepareCommitTx(txHash);
+    const blockHash = block.getId();
+    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, ZERO_ADDRESS);
     await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
     await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient        
-    await utils.claimWithPrevTx(txData, ENDURIO_HASH)
+    const memoHash = web3.utils.keccak256(Buffer.from(memo))
+    await utils.claimWithPrevTx(txData, memoHash)
     return miner;
   }
 })
