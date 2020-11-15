@@ -164,7 +164,13 @@ contract("BrandMarket", accounts => {
     const miner = keys.find(k => k.address == txData.miner)
     await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient        
     const memoHash = web3.utils.keccak256(Buffer.from(memo))
-    await utils.claimWithPrevTx(txData, memoHash)
+    const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
+    switch (Number(state)) {
+      case 0: throw "tx already claimed"
+      case 1: await utils.claim(txData, memoHash); break;
+      case 2: await utils.claimWithPrevTx(txData, memoHash); break;
+      default: throw `unknown TxState: ${state}`
+    }
     return miner;
   }
 })
