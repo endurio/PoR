@@ -21,7 +21,7 @@ let instBM;
 
 const FOOBAR = Buffer.from('foobar');
 const FOOBAR_HEX = '0x'+FOOBAR.toString('hex');
-const FOOBAR_HASH = '0x38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e';   // KECCAK('foobar')
+const FOOBAR_HASH = web3.utils.keccak256(FOOBAR);
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
