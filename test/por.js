@@ -14,8 +14,8 @@ let inst;
 let instPoR;
 let instRN;
 
-const ENDURIO = 'endur.io';
-const ENDURIO_HASH = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
+const ENDURIO = Buffer.from('endur.io');
+const ENDURIO_HASH = '0x022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147';  // KECCAK('endur.io')
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DUMMY_ADDRESS = '0x0123456789012345678901234567890123456789';
@@ -462,7 +462,7 @@ async function expectEventClaim(call, block, recipient, multiplier) {
     value: reward.toString(),
   });
   expectEvent(receipt, 'Reward', {
-    memoHash: '0x'+ENDURIO_HASH,
+    memoHash: ENDURIO_HASH,
     payer: ZERO_ADDRESS,
     miner: recipient,
     value: reward.toString(),

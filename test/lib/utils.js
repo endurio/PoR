@@ -58,7 +58,7 @@ module.exports = {
     const memo = findMemo(tx.outs)
     let memoLength = 0;
     if (memo) {
-      expect(memo.slice(0, brand.length)).to.equal(brand, 'unknown memo')
+      expect(memo.slice(0, brand.length)).to.equal(brand.toString(), 'unknown memo')
       memoLength = memo.length > brand.length ? brand.length : 0;
     }
 
@@ -76,7 +76,7 @@ module.exports = {
   },
 
   claim(txData, brandHash) {
-    return instPoR.claim('0x' + txData.block, '0x' + brandHash);
+    return instPoR.claim('0x' + txData.block, brandHash);
   },
 
   claimWithPrevTx(txData, brandHash, {inputIdx, pkhPos, dxHash} = {}) {
@@ -96,7 +96,7 @@ module.exports = {
       extra = setPKHPos(extra, pkhPos)
     }
 
-    return instPoR.claimWithPrevTx('0x' + txData.block, '0x' + brandHash, '0x' + vin, '0x' + vout, '0x' + extra);
+    return instPoR.claimWithPrevTx('0x' + txData.block, brandHash, '0x' + vin, '0x' + vout, '0x' + extra);
 
     function setPKHPos(extra, pkhPos) {
       return extra.slice(0, 8*2) +

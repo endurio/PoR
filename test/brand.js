@@ -16,8 +16,12 @@ let instPoR;
 let instRN;
 let instBM;
 
-const ENDURIO = 'endur.io';
-const ENDURIO_HASH = '022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147'; // KECCAK('endur.io')
+const ENDURIO = Buffer.from('endur.io');
+const ENDURIO_HASH = '0x022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa981d2147';  // KECCAK('endur.io')
+
+const FOOBAR = Buffer.from('foobar');
+const FOOBAR_HEX = '0x'+FOOBAR.toString('hex');
+const FOOBAR_HASH = '0x38d18acb67d25c8bb9942764b62f18e17054f66a817bd4295423adf9ed98873e';   // KECCAK('foobar')
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
