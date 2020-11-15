@@ -40,8 +40,9 @@ contract DataStructure is ERC20 {
     // events
     event GlobalConfig(uint comRate, uint levelStep);
     event Active(
-        bytes   indexed memo,
+        bytes32 indexed memoHash,
         address indexed payer,
+        bytes           memo,
         uint            payRate,
         uint            balance,
         uint            expiration

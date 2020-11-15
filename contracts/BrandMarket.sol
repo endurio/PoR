@@ -53,7 +53,7 @@ contract BrandMarket is DataStructure, Initializable {
             _transfer(msg.sender, address(this), fund);
             brand.balance += fund;  // overflowable but unexploitable
         }
-        emit Active(memo, msg.sender, payRate, brand.balance, brand.expiration);
+        emit Active(memoHash, msg.sender, memo, payRate, brand.balance, brand.expiration);
     }
 
     /**
