@@ -89,6 +89,64 @@ contract("BrandMarket", accounts => {
         value: (balance >> 1).toString(),
       })
     })
+
+    it("improve running brand 'foobar'", async() => {
+      const balance = 274882101312;
+      const payRate = 0.1;
+      await expectRevert(instBM.activate(FOOBAR, 0, decShift(payRate, 18), 0), '!expired: increasing pay rate only')
+      await expectRevert(instBM.activate(FOOBAR, 0, 0, 123), '!expired: extending expiration only')
+      const receipt = await instBM.activate(FOOBAR, balance >> 2, decShift(payRate*2, 18), 0)
+      expectEvent(receipt, 'Active', {
+        memoHash: FOOBAR_HASH,
+        payer: sender.address,
+        memo: FOOBAR_HEX,
+        payRate: decShift(payRate*2, 18),
+        balance: ((balance>>1) + (balance>>2)).toString(),
+      })
+      expectEvent(receipt, 'Transfer', {
+        from: sender.address,
+        to: inst.address,
+        value: (balance >> 2).toString(),
+      })
+    })
+
+    it("de-activate a running brand", async() => {
+      await expectRevert(instBM.deactivate(FOOBAR_HASH), '!expired')
+    })
+
+    it("re-activate an expired brand with lesser pay rate", async() => {
+      await time.increase(2*7*24*60*60);  // default 2 weeks
+      const payRate = 0.1/2;
+      const receipt = await instBM.activate(FOOBAR, 123, decShift(payRate, 18), 0)
+      expectEvent(receipt, 'Active', {
+        memoHash: FOOBAR_HASH,
+        payer: sender.address,
+        memo: FOOBAR_HEX,
+        payRate: decShift(payRate, 18),
+      })
+      expectEvent(receipt, 'Transfer', {
+        from: sender.address,
+        to: inst.address,
+        value: '123',
+      })
+    })
+
+    it("de-activate an expired brand", async() => {
+      const {balance, expiration} = await instBM.getCampaignDetails(FOOBAR_HASH, sender.address)
+      await time.increaseTo(expiration-1) // one sec before expired
+      await expectRevert(instBM.deactivate(FOOBAR_HASH), '!expired')
+      await time.increase(1)              // just expired
+      const receipt = await instBM.deactivate(FOOBAR_HASH)
+      expectEvent(receipt, 'Deactive', {
+        memoHash: FOOBAR_HASH,
+        payer: sender.address,
+      })
+      expectEvent(receipt, 'Transfer', {
+        from: inst.address,
+        to: sender.address,
+        value: balance,
+      })
+    })
   })
 
   function mineSomeCoin() {
