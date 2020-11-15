@@ -114,7 +114,7 @@ async function build(psbt, inputs, recipients, sender) {
                     script: Buffer.from(output.script.hex, 'hex'),
                     value: amount,
                 })
-                if (psbt.txOutputs.length >= MaxOutput) {
+                if (psbt.txOutputs.length > MaxOutput) {
                     console.log('recipients list exhausted')
                     return
                 }
