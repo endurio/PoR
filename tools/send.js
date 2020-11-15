@@ -24,9 +24,18 @@ const memo = 'foobar'
 const symbol = 'BTC-TEST'
 const MaxOutput = 8
 const RecipientRate = 32
-const feeRate = {
+
+const FEE_RATE = {
     'BTC': 150,
     'BTC-TEST': 0.672,  // or 20?
+}
+
+const BOUNTY = {
+    'BTC-TEST': 136,
+}
+
+const FEE = {
+    'BTC-TEST': 500,
 }
 
 async function doIt() {
@@ -66,10 +75,14 @@ async function doIt() {
     console.log('build the mining outputs and required inputs')
     await build(psbt, inputs, recipients, sender)
 
-    console.error('fee', psbt.getFee())
-    console.error('feeRate', psbt.getFeeRate())
+    const tx = psbt.extractTransaction()
 
-    console.error('tx:', psbt.extractTransaction())
+    console.error('tx:', tx)
+    console.error('byte length', tx.byteLength(true), tx.byteLength(false))
+    console.error('size', tx.virtualSize(), tx.weight(), tx.toBuffer().length)
+
+    console.error('fee', psbt.getFee())
+    console.error('feeRate', psbt.getFeeRate(), psbt.getFee() / tx.toBuffer().length)
 }
 
 async function build(psbt, inputs, recipients, sender) {
@@ -92,7 +105,7 @@ async function build(psbt, inputs, recipients, sender) {
             for (let i = recIdx; i < recipients.length; ++i) {
                 const rec = recipients[i]
                 const output = rec.txouts[rec.txouts.length-1]
-                const amount = 2340000 // TODO: calculate this
+                const amount = BOUNTY[symbol] // TODO: calculate this
                 if (outValue + amount > inValue) {
                     break;  // need more input
                 }
@@ -112,15 +125,25 @@ async function build(psbt, inputs, recipients, sender) {
 
     await buildWithoutChange(psbt)
 
+    console.error('size before adding change output', psbt.toBuffer().length)
+
     // assert(inValue > outValue)
     psbt.addOutput({
         address: sender,
-        value: inValue - outValue,
+        value: inValue - outValue - FEE[symbol],
     })
+
+    console.error('size after adding change output', psbt.toBuffer().length)
 
     psbt.signAllInputs(ECPairs[sender])
 
-    return psbt.finalizeAllInputs()
+    console.error('size after sign all inputs', psbt.toBuffer().length)
+
+    psbt.finalizeAllInputs()
+
+    console.error('size after finalize all inputs', psbt.toBuffer().length)
+
+    return psbt
 }
 
 async function searchForInput(utxos, maxBlocks = 6) {
