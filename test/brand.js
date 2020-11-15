@@ -6,6 +6,7 @@ const { time, expectRevert, expectEvent, BN } = require('@openzeppelin/test-help
 const snapshot = require('./lib/snapshot');
 const { keys, blocks, txs } = require('./data/por');
 const utils = require('./lib/utils');
+const { decShift } = require('../tools/lib/big');
 
 const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
@@ -62,12 +63,34 @@ contract("BrandMarket", accounts => {
 
   describe('brand management', () => {
     it("mine some coin", async() => {
-      const key = await mineSomeCoin()
-      expect(utils.addressCompare(key.address, sender.address)).to.equal(0, "should the miner address is the truffle test account")
+      const miner = await mineSomeCoin()
+      expect(utils.addressCompare(miner.address, sender.address)).to.equal(0, "should the miner address is the truffle test account")
       const balance = await inst.balanceOf(sender.address)
       expect(balance).to.be.bignumber.equal(new BN(274882101312), "should some coin be mined")
     })
+
+    it("activate new brand 'foobar'", async() => {
+      const balance = 274882101312;
+      const payRate = 0.1;
+      await expectRevert(instBM.activate(FOOBAR, 0, decShift(payRate, 18), 0), '!fund')
+      await expectRevert(instBM.activate(FOOBAR, 1, 0, 0), '!payRate')
+      await expectRevert(instBM.activate(FOOBAR, balance+1, decShift(payRate, 18), 0), 'transfer amount exceeds balance')
+      const receipt = await instBM.activate(FOOBAR, balance >> 1, decShift(payRate, 18), 0)
+      expectEvent(receipt, 'Active', {
+        memoHash: FOOBAR_HASH,
+        payer: sender.address,
+        memo: FOOBAR_HEX,
+        payRate: decShift(payRate, 18),
+        balance: (balance >> 1).toString(),
+      })
+      expectEvent(receipt, 'Transfer', {
+        from: sender.address,
+        to: inst.address,
+        value: (balance >> 1).toString(),
+      })
+    })
   })
+
   function mineSomeCoin() {
     return mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')
   }
