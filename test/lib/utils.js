@@ -1,7 +1,9 @@
+const _ = require('lodash');
 const hash256 = require('../vendor/hash256');
 const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
 const { blocks, txs } = require('../data/por');
+const { decShift } = require('../../tools/lib/big');
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -125,6 +127,28 @@ module.exports = {
     }
     return a
   },
+
+  getExpectedReward(block, rate = 1) {
+    if (_.isString(block)) {
+      block = bitcoinjs.Block.fromHex(blocks[block]);
+    }
+    const MAX_TARGET = 1n<<240n;
+    const target = bitsToTarget(block.bits)
+    return MAX_TARGET / target * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18));
+  },
+}
+
+function bitsToTarget(bits) {
+  if (bits > 0xffffffff) {
+    throw new Error('"bits" may not be larger than 4 bytes')
+  }
+  const exponent = bits >>> 24
+  if (exponent <= 3) throw new Error('target exponent must be > 3')
+  if (exponent > 32) throw new Error('target exponent must be < 32')
+  const mantissa = bits & 0x007fffff
+  const target = Buffer.alloc(32, 0)
+  target.writeUInt32BE(mantissa << 8, 32 - exponent)
+  return BigInt('0x' + target.toString('hex'));
 }
 
 function findMemo(outs) {
