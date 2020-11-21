@@ -188,6 +188,12 @@ contract("BrandMarket", accounts => {
         value: reward.toString(),
       });
     })
+
+    // TODO: continue to mine until the brand's fund is exhausted and deactivated
+
+    // TODO: active a brand with payRate * reward > fund, so the brand will be deactivated on the first payment
+
+    // TODO: multiple campaigns of the same brand, and double claim tests
   })
 
   async function mineSomeCoin() {
