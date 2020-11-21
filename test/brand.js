@@ -148,8 +148,51 @@ contract("BrandMarket", accounts => {
     })
   })
 
-  function mineSomeCoin() {
-    return mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')
+  describe('brand payment', () => {
+    it("ready the chain time", async() => {
+      const txHash = 'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09'
+      const txData = txs[txHash]
+      const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+      await time.increaseTo(block.timestamp)
+    })
+
+    it("activate new brand 'foobar'", async() => {
+      const fund = 200000000000;
+      const payRate = 0.01;
+      await instBM.activate(FOOBAR, fund, decShift(payRate, 18), 0)
+    })
+
+    it("mine the txs", async() => {
+      const payRate = 0.01;
+      const payer = sender.address;
+
+      const txHash = 'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09'
+      const {claimReceipt: receipt, miner} = await mine(txHash, payer)
+      const recipient = miner.address
+      const reward = utils.getExpectedReward(txs[txHash].block, payRate)
+      const commission = reward / BigInt(2);
+      expectEvent(receipt, 'CommissionLost', {
+        payer,
+        miner: recipient,
+        value: commission.toString(),
+      });
+      expectEvent(receipt, 'Transfer', {
+        from: inst.address,
+        to: recipient,
+        value: reward.toString(),
+      });
+      expectEvent(receipt, 'Reward', {
+        memoHash: FOOBAR_HASH,
+        payer,
+        miner: recipient,
+        value: reward.toString(),
+      });
+    })
+  })
+
+  async function mineSomeCoin() {
+    const {miner} = await mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')
+    return miner
   }
 
   async function mine(txHash, brandPayer = ZERO_ADDRESS) {
@@ -162,15 +205,19 @@ contract("BrandMarket", accounts => {
     await instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, brandPayer);
     await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
-    await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient        
+    await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
     const memoHash = web3.utils.keccak256(Buffer.from(memo))
     const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
     switch (Number(state)) {
       case 0: throw "tx already claimed"
-      case 1: await utils.claim(txData, memoHash); break;
-      case 2: await utils.claimWithPrevTx(txData, memoHash); break;
+      case 1: var claimReceipt = await utils.claim(txData, memoHash); break;
+      case 2: var claimReceipt = await utils.claimWithPrevTx(txData, memoHash); break;
       default: throw `unknown TxState: ${state}`
     }
-    return miner;
+    return {
+      claimReceipt,
+      miner,
+    };
   }
 })
+
