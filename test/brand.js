@@ -166,27 +166,33 @@ contract("BrandMarket", accounts => {
       const payRate = 0.01;
       const payer = sender.address;
 
-      const txHash = 'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09'
-      const {claimReceipt: receipt, miner} = await mine(txHash, payer)
-      const recipient = miner.address
-      const reward = utils.getExpectedReward(txs[txHash].block, payRate)
-      const commission = reward / BigInt(2);
-      expectEvent(receipt, 'CommissionLost', {
-        payer,
-        miner: recipient,
-        value: commission.toString(),
-      });
-      expectEvent(receipt, 'Transfer', {
-        from: inst.address,
-        to: recipient,
-        value: reward.toString(),
-      });
-      expectEvent(receipt, 'Reward', {
-        memoHash: FOOBAR_HASH,
-        payer,
-        miner: recipient,
-        value: reward.toString(),
-      });
+      const commitTxs = [
+        'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09',
+        '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2',
+      ]
+
+      for (const txHash of commitTxs) {
+        const {claimReceipt: receipt, miner} = await mine(txHash, payer)
+        const recipient = miner.address
+        const reward = utils.getExpectedReward(txs[txHash].block, payRate)
+        const commission = reward / BigInt(2);
+        expectEvent(receipt, 'CommissionLost', {
+          payer,
+          miner: recipient,
+          value: commission.toString(),
+        });
+        expectEvent(receipt, 'Transfer', {
+          from: inst.address,
+          to: recipient,
+          value: reward.toString(),
+        });
+        expectEvent(receipt, 'Reward', {
+          memoHash: FOOBAR_HASH,
+          payer,
+          miner: recipient,
+          value: reward.toString(),
+        });
+      }
     })
 
     // TODO: continue to mine until the brand's fund is exhausted and deactivated
