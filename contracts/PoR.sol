@@ -28,6 +28,14 @@ contract PoR is DataStructure {
     uint constant EXTRA_MEMO_LENGTH = 32*4;
     uint constant EXTRA_PUBKEY_POS  = 32*5;     uint constant EXTRA_PKH_POS         = 32*5;
 
+    uint constant EXTRA_FLAG_BOUNTY = 1<<255;
+
+    // bounty params
+    uint constant BOUNTY_MINTXSIZE  = 32*0; // +32
+    uint constant BOUNTY_TXSIZE     = 32*1; // +32
+    uint constant BOUNTY_MINVALUE   = 32*2; // +64
+    uint constant BOUNTY_TOTALVALUE = 32*4; // +64
+
     using BTCUtils for bytes;
     using BTCUtils for uint256;
     using BytesLib for bytes;
@@ -155,9 +163,23 @@ contract PoR is DataStructure {
         return bytes20(pkh.toBytes32());
     }
 
+    struct _Bounty {
+        bytes script;       // bounty output script hash
+        uint outputSize;
+        uint minValue;
+        uint totalValue;
+    }
+
+    struct _Tx {
+        bytes32 id;
+        bytes opret;
+        bytes input;
+    }
+
     /// @param merkleProof The proof's intermediate nodes (digests between leaf and root)
     /// @param extra       All the following params packed in a single bytes32
-    ///     uint32
+    ///     uint1  EXTRA_FLAG_BOUNTY
+    ///     uint31
     ///     uint32
     ///     uint32 EXTRA_PUBKEY_POS  // (optional) index of 33-bytes compressed PubKey in input redeem script
     ///     uint32 EXTRA_MEMO_LENGTH // (optional) memo lengh in OP_RET to add extra user memo after the brand
@@ -173,52 +195,76 @@ contract PoR is DataStructure {
         bytes   calldata    vout,   // tx output vector
         address             payer
     ) external {
-        Header storage header = headers[blockHash];
-
         { // stack too deep
-        uint32 timestamp = header.timestamp;
+        uint32 timestamp = headers[blockHash].timestamp;
         require(timestamp != 0, "!block");
         require(_minable(timestamp), "mining time over");
         }
 
-        bytes32 txId = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
+        _Tx memory _tx;
+        _tx.id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
+        require(ValidateSPV.prove(_tx.id, headers[blockHash].merkleRoot, merkleProof, extra.ui32(EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
-        require(ValidateSPV.prove(txId, header.merkleRoot, merkleProof, extra.ui32(EXTRA_MERKLE_IDX)), "invalid merkle proof");
+        _Bounty memory bounty;
+
+        if (extra.flag(EXTRA_FLAG_BOUNTY)) {
+            (   _tx.opret,
+                bounty.script,
+                bounty.outputSize,
+                bounty.minValue,
+                bounty.totalValue
+            ) = vout.extractBountyOutputs(uint(blockHash));
+        } else {
+            _tx.opret = vout.extractFirstOpReturn();
+        }
 
         // extract the brand from the first output with OP_RETURN
-        Transaction storage winner = _processTxMemo(
+        Transaction storage winner = _processTx(
             blockHash,
-            txId,
-            vout.extractFirstOpReturn(),
+            _tx.id,
+            _tx.opret,
             extra.ui32(EXTRA_MEMO_LENGTH),
             payer
         );
 
-        // TODO: handle manual miner address in tx memo
+        if (bounty.outputSize > 0) {
+            (   uint inputSize,
+                bytes memory inputs
+            ) = vin.extractBountyInputs();
+            // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
+            uint minTxSize = inputSize + bounty.outputSize + 10;
+            // version(4) + vins + vouts + locktime(4)
+            uint txSize = vin.length + vout.length + 8;
+            uint packed =
+                (MAX_UINT32 & minTxSize)        << BOUNTY_MINTXSIZE |
+                (MAX_UINT32 & txSize)           << BOUNTY_TXSIZE    |
+                (MAX_UINT64 & bounty.minValue)  << BOUNTY_MINVALUE  |
+                (MAX_UINT64 & bounty.totalValue)<< BOUNTY_TOTALVALUE;
+            winner.bounty = keccak256(abi.encodePacked(packed, bounty.script, inputs));
+        }
 
         // store the outpoint to claim the reward later
-        bytes memory input = vin.extractInputAtIndex(extra.ui32(EXTRA_INPUT_IDX));
+        // TODO: move this to extractBountyInputs
+        _tx.input = vin.extractInputAtIndex(extra.ui32(EXTRA_INPUT_IDX));
         uint posPK = extra.ui32(EXTRA_PUBKEY_POS);
 
         if (posPK > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
             winner.state = TxState.PKH;
-            winner.minerData = _getPKH(input.slice(32+4+1+posPK, 33));
-        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
+            winner.minerData = _getPKH(_tx.input.slice(32+4+1+posPK, 33));
+        } else if (_tx.input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
             winner.state = TxState.PKH;
-            winner.minerData = bytes20(input.slice(32+4+4, 20).toBytes32());
-        } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
+            winner.minerData = bytes20(_tx.input.slice(32+4+4, 20).toBytes32());
+        } else if (_tx.input.length >= 32+4+1+33+4 && _tx.input[_tx.input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
             winner.state = TxState.PKH;
-            winner.minerData = _getPKH(input.slice(input.length-33-4, 33));
+            winner.minerData = _getPKH(_tx.input.slice(_tx.input.length-33-4, 33));
         } else {
             winner.state = TxState.OUTPOINT;
-            winner.minerData = bytes20(input.extractInputTxIdLE());
-            winner.outpointIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
+            winner.minerData = bytes20(_tx.input.extractInputTxIdLE());
+            winner.outpointIdx = _tx.input.extractTxIndexLE().reverseEndianness().toUint32(0);
         }
-
-        winner.id = txId;
     }
 
     function getBlockWinner(
@@ -229,7 +275,7 @@ contract PoR is DataStructure {
         uint    reward,
         address payer,
         bytes20 minerData,
-        uint32  outpointIdx,
+        uint32  outpointIdx,        
         TxState state
     ) {
         Header storage header = headers[blockHash];
@@ -244,7 +290,7 @@ contract PoR is DataStructure {
         );
     }
 
-    function _processTxMemo(
+    function _processTx(
         bytes32         blockHash,
         bytes32         txId,
         bytes   memory  opret,
@@ -271,6 +317,7 @@ contract PoR is DataStructure {
         // for both new and replacing winner
         winner.reward = _getBrandReward(memoHash, payer, rewardRate);
         winner.payer = payer;
+        winner.id = txId;
     }
 
     function _processMemo(

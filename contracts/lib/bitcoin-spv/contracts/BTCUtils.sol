@@ -153,6 +153,38 @@ library BTCUtils {
     /* Legacy Input */
     /* ************ */
 
+    /// @param _vin      The vin as a tightly-packed byte array
+    function extractBountyInputs(bytes memory _vin) internal pure returns (
+        uint firstInputSize,
+        bytes memory inputs
+    ) {
+        uint256 _varIntDataLen;
+        uint256 _nIns;
+
+        (_varIntDataLen, _nIns) = parseVarInt(_vin);
+        require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
+
+        bytes memory _remaining;
+
+        uint256 _len = 0;
+        uint256 _offset = 1 + _varIntDataLen;
+
+        for (uint256 _i = 0; _i < _nIns; _i ++) {
+            _remaining = _vin.slice(_offset, _vin.length - _offset);
+            inputs = abi.encodePacked(_remaining.slice(0, 32+4));   // append the outpointTx(32) and outpointIdxLE(4)
+            _len = determineInputLength(_remaining);
+            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
+            if (_i == 0) {  // bounty input always is the first one
+                firstInputSize = _len;
+            }
+            _offset = _offset + _len;
+        }
+
+        _remaining = _vin.slice(_offset, _vin.length - _offset);
+        _len = determineInputLength(_remaining);
+        require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
+    }
+
     /// @notice          Extracts the nth input from the vin (0-indexed)
     /// @dev             Iterates over the vin. If you need to extract several, write a custom function
     /// @param _vin      The vin as a tightly-packed byte array
@@ -361,6 +393,7 @@ library BTCUtils {
         return _vout.slice(_offset, _len);
     }
 
+    // TODO: move this function out
     function extractFirstOpReturn(bytes memory _vout) internal pure returns (bytes memory) {
         (uint256 _varIntDataLen, uint256 _nOuts) = parseVarInt(_vout);
         require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
@@ -380,6 +413,53 @@ library BTCUtils {
         }
 
         revert("!OP_RET");
+    }
+
+    // TODO: move this function out
+    function extractBountyOutputs(
+        bytes memory _vout,
+        uint samplingSeed
+    ) internal pure returns (
+        bytes memory opret,
+        bytes memory script,
+        uint bountyOutputSize,
+        uint minValue,
+        uint totalValue
+    ) {
+        (uint _varIntDataLen, uint _nOuts) = parseVarInt(_vout);
+        require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
+
+        require(_nOuts > 2, "bounty: not enough outputs");
+        uint _bountyIdx = samplingSeed % (_nOuts-2) + 1;
+
+        bytes memory _remaining;
+        uint _offset = 1 + _varIntDataLen;
+
+        for (uint256 _i = 0; _i < _nOuts; _i ++) {
+            _remaining = _vout.slice(_offset, _vout.length - _offset);
+            uint _len = determineOutputLength(_remaining);
+            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
+            if (_i == 0) {
+                // the first output must be OP_RETURN
+                require(_remaining[9] == 0x6a, "bounty: 1st output != OP_RET");
+                uint _dataLen = uint8(_remaining[10]);
+                opret = _remaining.slice(11, _dataLen);
+            } else {
+                uint value = uint(extractValue(_remaining));
+                totalValue += value;
+                if (_i < _nOuts-1) { // exclude the last output (coin change) from minValue
+                    if (value < minValue || minValue == 0) {
+                        minValue = value;
+                    }
+                    if (_i == _bountyIdx) { // bounty output cannot be the last output (coin change)
+                        uint8 _scriptLen = uint8(_remaining[8]);
+                        script = _remaining.slice(9, _scriptLen);
+                        bountyOutputSize = _len;
+                    }
+                }
+            }
+            _offset += _len;
+        }
     }
 
     /// @notice          Extracts the value bytes from the output in a tx

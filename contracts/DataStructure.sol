@@ -36,6 +36,8 @@ contract DataStructure is ERC20 {
 
     // constant
     uint64  constant COM_RATE_UNIT  = 1 << 32;
+    uint    constant MAX_UINT32     = (1<<32)-1;
+    uint    constant MAX_UINT64     = (1<<64)-1;
 
     // events
     event GlobalConfig(uint comRate, uint levelStep);
@@ -144,4 +146,5 @@ struct Transaction {
     bytes20 minerData;
     uint32  outpointIdx;    // for P2WPKH (along with minderData.OUTPOINT)
     TxState state;
+    bytes32 bounty;
 }

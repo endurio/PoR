@@ -19,8 +19,6 @@ import "./interface/IRefNet.sol";
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract RefNetwork is DataStructure, IRefNet, Initializable {
-    uint constant MAX_UINT32    = (1<<32)-1;
-    uint constant MAX_UINT64    = (1<<64)-1;
     uint constant MAX_INT64     = (1<<63)-1;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192)-1;
 
