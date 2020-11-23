@@ -447,7 +447,7 @@ async function expectEventClaim(call, block, recipient, multiplier) {
   const commission = reward / BigInt(2);
 
   const receipt = await call;
-  expect(receipt.logs.length).to.equal(3, "claim must emit 2 events");
+  expect(receipt.logs.length).to.equal(3, "claim must emit 3 events");
   expectEvent(receipt, 'CommissionLost', {
     payer: ZERO_ADDRESS,
     miner: recipient,
