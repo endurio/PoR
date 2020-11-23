@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.2;
+pragma experimental ABIEncoderV2;
 
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
@@ -17,6 +18,8 @@ import "./lib/time.sol";
  */
 contract PoR is DataStructure {
     uint constant MINING_TIME = 1 hours;
+    uint constant BOUNTY_TIME = 1 hours;
+    uint constant RECIPIENT_RATE = 32;
 
     uint constant MAX_TARGET = 1<<240;
 
@@ -163,17 +166,73 @@ contract PoR is DataStructure {
         return bytes20(pkh.toBytes32());
     }
 
-    struct _Bounty {
-        bytes script;       // bounty output script hash
-        uint outputSize;
-        uint minValue;
-        uint totalValue;
-    }
-
     struct _Tx {
         bytes32 id;
+        bytes32 bounty;
         bytes opret;
         bytes input;
+    }
+
+    /// @param extras   All the following params packed in a single bytes32
+    ///     uint32 EXTRA_INPUT_IDX  outpoint index for each inputs
+    ///     uint32 EXTRA_MERKLE_IDX the merkle leaf's index in the tree (0-indexed)
+    ///     uint32 EXTRA_LOCKTIME,  tx locktime
+    ///     uint32 EXTRA_VERSION,   tx version
+    function claimBounty(
+        bytes32 blockHash,  // big-endian
+        bytes32 memoHash,
+        bytes32 params,             // bounty params
+        bytes calldata headerBytes, // block header of the bounty tx
+        bytes calldata merkleProof, // merkle proof of the bounty tx
+        bytes[] calldata vins,
+        bytes[] calldata vouts,
+        bytes32[] calldata extras
+    ) external {
+        { // stack too deep
+        uint target = headerBytes.extractTarget();
+        // Require that the header has sufficient work
+        require(uint(headerBytes.hash256()).reverseUint256() <= target, "insufficient work");
+        // bounty reference block must have the same target as the mining block
+        require(target == headers[blockHash].target, "block target not match");
+        }
+
+        // overflowable but unexploitable
+        require(headerBytes.extractTimestamp() - headers[blockHash].timestamp < BOUNTY_TIME, "ref block too far");
+
+        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+        require(winner.state != TxState.CLAIMED, "already claimed");
+        require(winner.bounty != 0, "!bounty");
+
+        { // stack too deep
+        bytes32 extra = extras[0];
+        bytes32 recipient = ValidateSPV.calculateTxId(
+            extra.ui32(EXTRA_VERSION),
+            vins[0],
+            vouts[0],
+            extra.ui32(EXTRA_LOCKTIME));
+        require(ValidateSPV.prove(
+            recipient,
+            headerBytes.extractMerkleRootLE().toBytes32(),
+            merkleProof,
+            extra.ui32(EXTRA_MERKLE_IDX)
+        ), "invalid merkle proof");
+        require(uint(keccak256(abi.encodePacked(winner.id, recipient))) % RECIPIENT_RATE == 0, "bounty recipient");
+        }
+
+        // verify params and recipient script
+        bytes memory bountyPreimage = abi.encodePacked(params, vouts[0].extractOutputAtIndex(uint(-1)).extractScript());
+
+        // verify inputs and calculate tx fee
+        uint64 inValue;
+        for (uint i = 1; i < extras.length; ++i) {
+            bytes32 extra = extras[i];
+            bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vins[i], vouts[i], extra.ui32(EXTRA_LOCKTIME));
+            uint idx = extra.ui32(EXTRA_INPUT_IDX);
+            inValue += vouts[i].extractOutputAtIndex(idx).extractValue();
+            bountyPreimage = abi.encodePacked(bountyPreimage, id, abi.encodePacked(uint32(idx)).reverseEndianness());
+        }
+
+        require(winner.bounty == keccak256(bountyPreimage), "bounty not match");
     }
 
     /// @param merkleProof The proof's intermediate nodes (digests between leaf and root)
@@ -205,15 +264,14 @@ contract PoR is DataStructure {
         _tx.id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
         require(ValidateSPV.prove(_tx.id, headers[blockHash].merkleRoot, merkleProof, extra.ui32(EXTRA_MERKLE_IDX)), "invalid merkle proof");
 
-        _Bounty memory bounty;
-
         if (extra.flag(EXTRA_FLAG_BOUNTY)) {
-            (   _tx.opret,
-                bounty.script,
-                bounty.outputSize,
-                bounty.minValue,
-                bounty.totalValue
-            ) = vout.extractBountyOutputs(uint(blockHash));
+            (   bytes memory opret,
+                bytes memory script,
+                bytes memory inputs,
+                bytes32 params
+            ) = _processBounty(blockHash, vin, vout);
+            _tx.opret = opret;
+            _tx.bounty = keccak256(abi.encodePacked(params, script, inputs));
         } else {
             _tx.opret = vout.extractFirstOpReturn();
         }
@@ -226,6 +284,8 @@ contract PoR is DataStructure {
             extra.ui32(EXTRA_MEMO_LENGTH),
             payer
         );
+
+        winner.bounty = _tx.bounty;
 
         // store the outpoint to claim the reward later
         // TODO: move this to extractBountyInputs
@@ -249,22 +309,56 @@ contract PoR is DataStructure {
             winner.minerData = bytes20(_tx.input.extractInputTxIdLE());
             winner.outpointIdx = _tx.input.extractTxIndexLE().reverseEndianness().toUint32(0);
         }
+    }
 
-        if (bounty.outputSize > 0) {
-            (   uint inputSize,
-                bytes memory inputs
-            ) = vin.extractBountyInputs();
-            // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
-            uint minTxSize = inputSize + bounty.outputSize + 10;
-            // version(4) + vins + vouts + locktime(4)
-            uint txSize = vin.length + vout.length + 8;
-            uint packed =
-                (MAX_UINT32 & minTxSize)        << BOUNTY_MINTXSIZE |
-                (MAX_UINT32 & txSize)           << BOUNTY_TXSIZE    |
-                (MAX_UINT64 & bounty.minValue)  << BOUNTY_MINVALUE  |
-                (MAX_UINT64 & bounty.totalValue)<< BOUNTY_TOTALVALUE;
-            winner.bounty = keccak256(abi.encodePacked(packed, bounty.script, inputs));
-        }
+    function _processBounty(
+        bytes32         blockHash,
+        bytes   memory  vin,    // tx input vector
+        bytes   memory  vout    // tx output vector
+    ) internal pure returns (
+        bytes memory opret,
+        bytes memory script,
+        bytes memory inputs,
+        bytes32 params
+    ) {
+        uint outputSize;
+        uint minValue;
+        uint totalValue;
+        uint inputSize;
+
+        (   opret,
+            script,
+            outputSize,
+            minValue,
+            totalValue
+        ) = vout.extractBountyOutputs(uint(blockHash));
+
+        (inputSize, inputs) = vin.extractBountyInputs();
+
+        // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
+        uint minTxSize = inputSize + outputSize + 10;
+        // version(4) + vins + vouts + locktime(4)
+        uint txSize = vin.length + vout.length + 8;
+        uint packed =
+            (MAX_UINT32 & minTxSize)    << BOUNTY_MINTXSIZE |
+            (MAX_UINT32 & txSize)       << BOUNTY_TXSIZE    |
+            (MAX_UINT64 & minValue)     << BOUNTY_MINVALUE  |
+            (MAX_UINT64 & totalValue)   << BOUNTY_TOTALVALUE;
+
+        params = bytes32(packed);
+    }
+
+    function processBounty(
+        bytes32             blockHash,
+        bytes   calldata    vin,    // tx input vector
+        bytes   calldata    vout    // tx output vector
+    ) external pure returns (
+        bytes memory opret,
+        bytes memory script,
+        bytes memory inputs,
+        bytes32 params
+    ) {
+        return _processBounty(blockHash, vin, vout);
     }
 
     function getBlockWinner(
@@ -276,6 +370,7 @@ contract PoR is DataStructure {
         address payer,
         bytes20 minerData,
         uint32  outpointIdx,        
+        bytes32 bounty,
         TxState state
     ) {
         Header storage header = headers[blockHash];
@@ -286,6 +381,7 @@ contract PoR is DataStructure {
             winner.payer,
             winner.minerData,
             winner.outpointIdx,
+            winner.bounty,
             winner.state
         );
     }

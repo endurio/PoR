@@ -171,7 +171,8 @@ library BTCUtils {
 
         for (uint256 _i = 0; _i < _nIns; _i ++) {
             _remaining = _vin.slice(_offset, _vin.length - _offset);
-            inputs = abi.encodePacked(_remaining.slice(0, 32+4));   // append the outpointTx(32) and outpointIdxLE(4)
+            // append to inputs outpointTx(32) and outpointIdxLE(4)
+            inputs = abi.encodePacked(inputs, _remaining.slice(0, 32+4));
             _len = determineInputLength(_remaining);
             require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
             if (_i == 0) {  // bounty input always is the first one
@@ -373,7 +374,18 @@ library BTCUtils {
 
         (_varIntDataLen, _nOuts) = parseVarInt(_vout);
         require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
-        require(_index < _nOuts, "Vout read overrun");
+        if (_nOuts <= _index) {
+            if (-_index < _nOuts) {
+                _index += _nOuts;
+            } else {
+                revert("Vout read overrun");
+            }
+        }
+        if (_index > 0 && _nOuts > -_index) {
+            _index = _nOuts + _index;
+        } else {
+            require(_index < _nOuts, "Vout read overrun");
+        }
 
         bytes memory _remaining;
 
@@ -452,14 +464,18 @@ library BTCUtils {
                         minValue = value;
                     }
                     if (_i == _bountyIdx) { // bounty output cannot be the last output (coin change)
-                        uint8 _scriptLen = uint8(_remaining[8]);
-                        script = _remaining.slice(9, _scriptLen);
+                        script = extractScript(_remaining);
                         bountyOutputSize = _len;
                     }
                 }
             }
             _offset += _len;
         }
+    }
+
+    function extractScript(bytes memory _output) internal pure returns (bytes memory) {
+        uint8 _scriptLen = uint8(_output[8]);
+        return _output.slice(9, _scriptLen);
     }
 
     /// @notice          Extracts the value bytes from the output in a tx
