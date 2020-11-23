@@ -3,12 +3,13 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
+import "@openzeppelin/contracts/math/Math.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "./lib/CapMath.sol";
 import "./lib/BurningBalance.sol";
 import "./lib/MaturingAddress.sol";
 import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
-import "@openzeppelin/contracts/math/Math.sol";
 import "./lib/time.sol";
 import "./interface/Initializable.sol";
 import "./interface/IRefNet.sol";
@@ -18,7 +19,7 @@ import "./interface/IRefNet.sol";
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract RefNetwork is DataStructure, IRefNet, Initializable {
+contract RefNetwork is DataStructure, ERC20, IRefNet, Initializable {
     uint constant MAX_INT64     = (1<<63)-1;   // maximum int value ABDK Math64x64 can hold
     uint constant MAX_UINT192   = (1<<192)-1;
 
@@ -32,6 +33,8 @@ contract RefNetwork is DataStructure, IRefNet, Initializable {
     uint    constant FREEZING_DURATION  = 1 weeks;  // node expired for this long can be flatten (by anyone)
 
     uint constant EPOCH = 1 weeks;
+
+    constructor() public ERC20("", "") {}
 
     function initialize() public override {
         require(root == address(0x0), "already initialized");

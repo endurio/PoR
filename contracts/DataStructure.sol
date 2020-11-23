@@ -3,12 +3,10 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
 /**
  * Data Structure and common logic
  */
-contract DataStructure is ERC20 {
+contract DataStructure {
     // Upgradable Contract Proxy //
     mapping(bytes4 => address) impls;   // function signature => implementation contract address
                                         // TODO: use ds to save a KECCAK on each proxy call
@@ -74,10 +72,7 @@ contract DataStructure is ERC20 {
         address indexed miner,
         uint            value
     );
-
-    constructor() public ERC20("Endurio", "ENDR") {
-    }
-
+    
     /**
      * we don't do that here
      */

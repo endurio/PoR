@@ -11,12 +11,17 @@ import "./lib/CapMath.sol";
 import "./DataStructure.sol";
 import "./lib/time.sol";
 
+interface IERC20Events {
+    event Transfer(address indexed from, address indexed to, uint256 value);
+    event Approval(address indexed owner, address indexed spender, uint256 value);
+}
+
 /**
  * Proof of Reference
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract PoR is DataStructure {
+contract PoR is DataStructure, IERC20Events {
     uint constant MINING_TIME = 1 hours;
     uint constant BOUNTY_TIME = 1 hours;
     uint constant RECIPIENT_RATE = 32;
@@ -173,62 +178,80 @@ contract PoR is DataStructure {
         bytes input;
     }
 
-    /// @param extras   All the following params packed in a single bytes32
+    /// @param words   All bytes32 params
+    ///     bounty tx extra,
+    ///     input tx extra,
+    ///     input tx extra,
+    ///     ...,
+    ///     params,
+    ///     memoHash,
+    ///     blockHash,
+    ///
+    /// @param buffers   All bytes params
+    ///     bounty tx vin, vout,
+    ///     input tx vin, vout,
+    ///     input tx vin, vout,
+    ///     ...,
+    ///     merkleProof,
+    ///     headerBytes,
+    ///
+    /// extra   All the following params packed in a single bytes32
     ///     uint32 EXTRA_INPUT_IDX  outpoint index for each inputs
     ///     uint32 EXTRA_MERKLE_IDX the merkle leaf's index in the tree (0-indexed)
     ///     uint32 EXTRA_LOCKTIME,  tx locktime
     ///     uint32 EXTRA_VERSION,   tx version
     function claimBounty(
-        bytes32 blockHash,  // big-endian
-        bytes32 memoHash,
-        bytes32 params,             // bounty params
-        bytes calldata headerBytes, // block header of the bounty tx
-        bytes calldata merkleProof, // merkle proof of the bounty tx
-        bytes[] calldata vins,
-        bytes[] calldata vouts,
-        bytes32[] calldata extras
+        bytes32[] calldata words,
+        bytes[] calldata buffers
     ) external {
+        // bytes32 blockHash = words[words.length-1]
+        // bytes32 memoHash = words[words.length-2]
+        // bytes32 params = words[words.length-3]
+
+        // bytes memory headerBytes = buffers[buffers.length-1]
+        // bytes memory merkleProof = buffers[buffers.length-2]
+
         { // stack too deep
-        uint target = headerBytes.extractTarget();
+        uint target = buffers[buffers.length-1].extractTarget();
         // Require that the header has sufficient work
-        require(uint(headerBytes.hash256()).reverseUint256() <= target, "insufficient work");
+        require(uint(buffers[buffers.length-1].hash256()).reverseUint256() <= target, "insufficient work");
         // bounty reference block must have the same target as the mining block
-        require(target == headers[blockHash].target, "block target not match");
+        require(target == headers[words[words.length-1]].target, "block target not match");
         }
 
         // overflowable but unexploitable
-        require(headerBytes.extractTimestamp() - headers[blockHash].timestamp < BOUNTY_TIME, "ref block too far");
+        require(buffers[buffers.length-1].extractTimestamp() - headers[words[words.length-1]].timestamp < BOUNTY_TIME, "ref block too far");
 
-        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+        Transaction storage winner = _mustGetBlockWinner(words[words.length-1], words[words.length-2]);
         require(winner.state != TxState.CLAIMED, "already claimed");
         require(winner.bounty != 0, "!bounty");
 
         { // stack too deep
-        bytes32 extra = extras[0];
+        bytes32 extra = words[0];
         bytes32 recipient = ValidateSPV.calculateTxId(
             extra.ui32(EXTRA_VERSION),
-            vins[0],
-            vouts[0],
+            buffers[0],
+            buffers[1],
             extra.ui32(EXTRA_LOCKTIME));
         require(ValidateSPV.prove(
             recipient,
-            headerBytes.extractMerkleRootLE().toBytes32(),
-            merkleProof,
+            buffers[buffers.length-1].extractMerkleRootLE().toBytes32(),
+            buffers[buffers.length-2],
             extra.ui32(EXTRA_MERKLE_IDX)
         ), "invalid merkle proof");
         require(uint(keccak256(abi.encodePacked(winner.id, recipient))) % RECIPIENT_RATE == 0, "bounty recipient");
         }
 
         // verify params and recipient script
-        bytes memory bountyPreimage = abi.encodePacked(params, vouts[0].extractOutputAtIndex(uint(-1)).extractScript());
+        bytes memory bountyPreimage = abi.encodePacked(words[words.length-3], buffers[1].extractOutputAtIndex(uint(-1)).extractScript());
 
         // verify inputs and calculate tx fee
         uint64 inValue;
-        for (uint i = 1; i < extras.length; ++i) {
-            bytes32 extra = extras[i];
-            bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vins[i], vouts[i], extra.ui32(EXTRA_LOCKTIME));
+        for (uint i = 1; i < words.length-3; ++i) {
+            bytes32 extra = words[i];
+            bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), buffers[i*2], buffers[i*2+1], extra.ui32(EXTRA_LOCKTIME));
             uint idx = extra.ui32(EXTRA_INPUT_IDX);
-            inValue += vouts[i].extractOutputAtIndex(idx).extractValue();
+            inValue += buffers[i*2+1].extractOutputAtIndex(idx).extractValue();
             bountyPreimage = abi.encodePacked(bountyPreimage, id, abi.encodePacked(uint32(idx)).reverseEndianness());
         }
 
