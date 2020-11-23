@@ -227,22 +227,6 @@ contract PoR is DataStructure {
             payer
         );
 
-        if (bounty.outputSize > 0) {
-            (   uint inputSize,
-                bytes memory inputs
-            ) = vin.extractBountyInputs();
-            // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
-            uint minTxSize = inputSize + bounty.outputSize + 10;
-            // version(4) + vins + vouts + locktime(4)
-            uint txSize = vin.length + vout.length + 8;
-            uint packed =
-                (MAX_UINT32 & minTxSize)        << BOUNTY_MINTXSIZE |
-                (MAX_UINT32 & txSize)           << BOUNTY_TXSIZE    |
-                (MAX_UINT64 & bounty.minValue)  << BOUNTY_MINVALUE  |
-                (MAX_UINT64 & bounty.totalValue)<< BOUNTY_TOTALVALUE;
-            winner.bounty = keccak256(abi.encodePacked(packed, bounty.script, inputs));
-        }
-
         // store the outpoint to claim the reward later
         // TODO: move this to extractBountyInputs
         _tx.input = vin.extractInputAtIndex(extra.ui32(EXTRA_INPUT_IDX));
@@ -264,6 +248,22 @@ contract PoR is DataStructure {
             winner.state = TxState.OUTPOINT;
             winner.minerData = bytes20(_tx.input.extractInputTxIdLE());
             winner.outpointIdx = _tx.input.extractTxIndexLE().reverseEndianness().toUint32(0);
+        }
+
+        if (bounty.outputSize > 0) {
+            (   uint inputSize,
+                bytes memory inputs
+            ) = vin.extractBountyInputs();
+            // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
+            uint minTxSize = inputSize + bounty.outputSize + 10;
+            // version(4) + vins + vouts + locktime(4)
+            uint txSize = vin.length + vout.length + 8;
+            uint packed =
+                (MAX_UINT32 & minTxSize)        << BOUNTY_MINTXSIZE |
+                (MAX_UINT32 & txSize)           << BOUNTY_TXSIZE    |
+                (MAX_UINT64 & bounty.minValue)  << BOUNTY_MINVALUE  |
+                (MAX_UINT64 & bounty.totalValue)<< BOUNTY_TOTALVALUE;
+            winner.bounty = keccak256(abi.encodePacked(packed, bounty.script, inputs));
         }
     }
 
