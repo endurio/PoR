@@ -141,8 +141,13 @@ contract PoR is DataStructure, IERC20Events {
         address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
         Transaction storage winner = headers[blockHash].winner[memoHash];
+        uint reward = winner.reward;
+        if (winner.nBounty > 0) {
+            require(winner.bounty == 0, "bounty unclaimed");
+            reward = CapMath.mul(reward, winner.nBounty*2);
+        }
         address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : winner.payer;
-        IRefNet(address(this)).reward(miner, payer, winner.reward, memoHash, blockHash);
+        IRefNet(address(this)).reward(miner, payer, reward, memoHash, blockHash);
         // TODO: removing _cleanUp seems to make the gas usage lower
         _cleanUp(blockHash, memoHash);
     }
@@ -174,6 +179,7 @@ contract PoR is DataStructure, IERC20Events {
     struct _Tx {
         bytes32 id;
         bytes32 bounty;
+        uint nBounty;
         bytes opret;
         bytes input;
     }
@@ -206,7 +212,6 @@ contract PoR is DataStructure, IERC20Events {
     ) external {
         // bytes32 blockHash = words[words.length-1]
         // bytes32 memoHash = words[words.length-2]
-        // bytes32 params = words[words.length-3]
 
         // bytes memory headerBytes = buffers[buffers.length-1]
         // bytes memory merkleProof = buffers[buffers.length-2]
@@ -219,12 +224,13 @@ contract PoR is DataStructure, IERC20Events {
         require(target == headers[words[words.length-1]].target, "block target not match");
         }
 
-        // overflowable but unexploitable
+        // overflowable: unexploitable
         require(buffers[buffers.length-1].extractTimestamp() - headers[words[words.length-1]].timestamp < BOUNTY_TIME, "ref block too far");
 
         Transaction storage winner = _mustGetBlockWinner(words[words.length-1], words[words.length-2]);
-        require(winner.state != TxState.CLAIMED, "already claimed");
-        require(winner.bounty != 0, "!bounty");
+
+        // TBD: do we need to verify winner.state here?
+        // require(winner.state != TxState.CLAIMED, "already claimed");
 
         { // stack too deep
         bytes32 extra = words[0];
@@ -239,14 +245,14 @@ contract PoR is DataStructure, IERC20Events {
             buffers[buffers.length-2],
             extra.ui32(EXTRA_MERKLE_IDX)
         ), "invalid merkle proof");
-        require(uint(keccak256(abi.encodePacked(winner.id, recipient))) % RECIPIENT_RATE == 0, "bounty recipient");
+        require(uint(keccak256(abi.encodePacked(winner.id, recipient))) % RECIPIENT_RATE == 0, "invalid recipient");
         }
 
-        // verify params and recipient script
-        bytes memory bountyPreimage = abi.encodePacked(words[words.length-3], buffers[1].extractOutputAtIndex(uint(-1)).extractScript());
+        uint inValue;
+        bytes32 params = words[words.length-3];
 
-        // verify inputs and calculate tx fee
-        uint64 inValue;
+        { // stack too deep
+        bytes memory bountyPreimage = abi.encodePacked(params, buffers[1].extractOutputAtIndex(uint(-1)).extractScript());
         for (uint i = 1; i < words.length-3; ++i) {
             bytes32 extra = words[i];
             bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), buffers[i*2], buffers[i*2+1], extra.ui32(EXTRA_LOCKTIME));
@@ -254,8 +260,16 @@ contract PoR is DataStructure, IERC20Events {
             inValue += buffers[i*2+1].extractOutputAtIndex(idx).extractValue();
             bountyPreimage = abi.encodePacked(bountyPreimage, id, abi.encodePacked(uint32(idx)).reverseEndianness());
         }
+        require(winner.bounty == keccak256(bountyPreimage), "commitment not match");
+        }
 
-        require(winner.bounty == keccak256(bountyPreimage), "bounty not match");
+        { // stack too deep
+        uint fee = inValue - params.ui64(BOUNTY_TOTALVALUE);    // overflowable: unexploitable
+        fee = CapMath.scaleDown(fee, params.ui32(BOUNTY_MINTXSIZE), params.ui32(BOUNTY_TXSIZE));
+        require(fee <= params.ui32(BOUNTY_MINVALUE), "dust output");
+        }
+
+        delete winner.bounty;   // mark the bounty is claimed
     }
 
     /// @param merkleProof The proof's intermediate nodes (digests between leaf and root)
@@ -291,10 +305,12 @@ contract PoR is DataStructure, IERC20Events {
             (   bytes memory opret,
                 bytes memory script,
                 bytes memory inputs,
-                bytes32 params
+                bytes32 params,
+                uint nBounty
             ) = _processBounty(blockHash, vin, vout);
             _tx.opret = opret;
             _tx.bounty = keccak256(abi.encodePacked(params, script, inputs));
+            _tx.nBounty = nBounty;
         } else {
             _tx.opret = vout.extractFirstOpReturn();
         }
@@ -309,6 +325,7 @@ contract PoR is DataStructure, IERC20Events {
         );
 
         winner.bounty = _tx.bounty;
+        winner.nBounty = uint32(_tx.nBounty);
 
         // store the outpoint to claim the reward later
         // TODO: move this to extractBountyInputs
@@ -342,7 +359,8 @@ contract PoR is DataStructure, IERC20Events {
         bytes memory opret,
         bytes memory script,
         bytes memory inputs,
-        bytes32 params
+        bytes32 params,
+        uint nBounty
     ) {
         uint outputSize;
         uint minValue;
@@ -353,7 +371,8 @@ contract PoR is DataStructure, IERC20Events {
             script,
             outputSize,
             minValue,
-            totalValue
+            totalValue,
+            nBounty
         ) = vout.extractBountyOutputs(uint(blockHash));
 
         (inputSize, inputs) = vin.extractBountyInputs();
@@ -379,7 +398,8 @@ contract PoR is DataStructure, IERC20Events {
         bytes memory opret,
         bytes memory script,
         bytes memory inputs,
-        bytes32 params
+        bytes32 params,
+        uint multiplier
     ) {
         return _processBounty(blockHash, vin, vout);
     }

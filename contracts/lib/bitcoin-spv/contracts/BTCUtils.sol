@@ -436,18 +436,20 @@ library BTCUtils {
         bytes memory script,
         uint bountyOutputSize,
         uint minValue,
-        uint totalValue
+        uint totalValue,
+        uint nOuts
     ) {
-        (uint _varIntDataLen, uint _nOuts) = parseVarInt(_vout);
+        uint _varIntDataLen;
+        (_varIntDataLen, nOuts) = parseVarInt(_vout);
         require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
 
-        require(_nOuts > 2, "bounty: not enough outputs");
-        uint _bountyIdx = samplingSeed % (_nOuts-2) + 1;
+        require(nOuts > 2, "bounty: not enough outputs");
+        uint _bountyIdx = samplingSeed % (nOuts-2) + 1;
 
         bytes memory _remaining;
         uint _offset = 1 + _varIntDataLen;
 
-        for (uint256 _i = 0; _i < _nOuts; _i ++) {
+        for (uint256 _i = 0; _i < nOuts; _i ++) {
             _remaining = _vout.slice(_offset, _vout.length - _offset);
             uint _len = determineOutputLength(_remaining);
             require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
@@ -459,7 +461,7 @@ library BTCUtils {
             } else {
                 uint value = uint(extractValue(_remaining));
                 totalValue += value;
-                if (_i < _nOuts-1) { // exclude the last output (coin change) from minValue
+                if (_i < nOuts-1) { // exclude the last output (coin change) from minValue
                     if (value < minValue || minValue == 0) {
                         minValue = value;
                     }
@@ -471,6 +473,9 @@ library BTCUtils {
             }
             _offset += _len;
         }
+
+        // return total number of bounty outputs
+        nOuts -= 2;
     }
 
     function extractScript(bytes memory _output) internal pure returns (bytes memory) {

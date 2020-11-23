@@ -141,5 +141,6 @@ struct Transaction {
     bytes20 minerData;
     uint32  outpointIdx;    // for P2WPKH (along with minderData.OUTPOINT)
     TxState state;
+    uint32  nBounty;        // bounty output count
     bytes32 bounty;
 }

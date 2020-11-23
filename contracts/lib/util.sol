@@ -70,6 +70,10 @@ library Packed {
         return uint32(extract(packed, bitOffset, (1<<32)-1));
     }
 
+    function ui64(bytes32 packed, uint bitOffset) internal pure returns (uint64) {
+        return uint64(extract(packed, bitOffset, (1<<64)-1));
+    }
+
     function flag(bytes32 packed, uint bitOffset) internal pure returns (bool) {
         return extract(packed, bitOffset, 1) == 1;
     }
