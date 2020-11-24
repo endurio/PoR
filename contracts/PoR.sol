@@ -36,7 +36,7 @@ contract PoR is DataStructure, IERC20Events {
     uint constant EXTRA_MEMO_LENGTH = 32*4;
     uint constant EXTRA_PUBKEY_POS  = 32*5;     uint constant EXTRA_PKH_POS         = 32*5;
 
-    uint constant EXTRA_FLAG_BOUNTY = 1<<255;
+    uint constant EXTRA_FLAG_BOUNTY = 255;
 
     // bounty params
     uint constant BOUNTY_MINTXSIZE  = 32*0; // +32
@@ -216,25 +216,32 @@ contract PoR is DataStructure, IERC20Events {
         // bytes memory headerBytes = buffers[buffers.length-1]
         // bytes memory merkleProof = buffers[buffers.length-2]
 
+        // overflowable: unexploitable
+        require(headers[words[words.length-1]].timestamp - buffers[buffers.length-1].extractTimestamp() <= BOUNTY_TIME, "block too old");
+
+        Transaction storage winner = _mustGetBlockWinner(words[words.length-1], words[words.length-2]);
+
         { // stack too deep
         uint target = buffers[buffers.length-1].extractTarget();
         // Require that the header has sufficient work
         require(uint(buffers[buffers.length-1].hash256()).reverseUint256() <= target, "insufficient work");
         // bounty reference block must have the same target as the mining block
-        require(target == headers[words[words.length-1]].target, "block target not match");
+
+        // A single (BTC) retarget never changes the target by more than a factor of 4 either way to prevent large changes in difficulty.
+        // To support more re-targeting protocols and testnet, we limit to factor of 2 upward before triggering an expensive reward retarget.
+        target /= headers[words[words.length-1]].target;
+        if (target >= 2) { // bounty reference block target is too week
+            winner.reward /= target;
         }
-
-        // overflowable: unexploitable
-        require(buffers[buffers.length-1].extractTimestamp() - headers[words[words.length-1]].timestamp < BOUNTY_TIME, "ref block too far");
-
-        Transaction storage winner = _mustGetBlockWinner(words[words.length-1], words[words.length-2]);
+        }
 
         // TBD: do we need to verify winner.state here?
         // require(winner.state != TxState.CLAIMED, "already claimed");
 
+        bytes32 recipient;
         { // stack too deep
         bytes32 extra = words[0];
-        bytes32 recipient = ValidateSPV.calculateTxId(
+        recipient = ValidateSPV.calculateTxId(
             extra.ui32(EXTRA_VERSION),
             buffers[0],
             buffers[1],
@@ -245,7 +252,7 @@ contract PoR is DataStructure, IERC20Events {
             buffers[buffers.length-2],
             extra.ui32(EXTRA_MERKLE_IDX)
         ), "invalid merkle proof");
-        require(uint(keccak256(abi.encodePacked(winner.id, recipient))) % RECIPIENT_RATE == 0, "invalid recipient");
+        // TODO: verify that the the ref tx does not have any OP_RET
         }
 
         uint inValue;
@@ -256,6 +263,9 @@ contract PoR is DataStructure, IERC20Events {
         for (uint i = 1; i < words.length-3; ++i) {
             bytes32 extra = words[i];
             bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), buffers[i*2], buffers[i*2+1], extra.ui32(EXTRA_LOCKTIME));
+            if (i == 1) {
+                require(uint(keccak256(abi.encodePacked(recipient, id).reverseEndianness())) % RECIPIENT_RATE == 0, "invalid recipient");
+            }
             uint idx = extra.ui32(EXTRA_INPUT_IDX);
             inValue += buffers[i*2+1].extractOutputAtIndex(idx).extractValue();
             bountyPreimage = abi.encodePacked(bountyPreimage, id, abi.encodePacked(uint32(idx)).reverseEndianness());
@@ -266,7 +276,7 @@ contract PoR is DataStructure, IERC20Events {
         { // stack too deep
         uint fee = inValue - params.ui64(BOUNTY_TOTALVALUE);    // overflowable: unexploitable
         fee = CapMath.scaleDown(fee, params.ui32(BOUNTY_MINTXSIZE), params.ui32(BOUNTY_TXSIZE));
-        require(fee <= params.ui32(BOUNTY_MINVALUE), "dust output");
+        require(fee <= params.ui64(BOUNTY_MINVALUE), "dust output");
         }
 
         delete winner.bounty;   // mark the bounty is claimed
@@ -399,7 +409,7 @@ contract PoR is DataStructure, IERC20Events {
         bytes memory script,
         bytes memory inputs,
         bytes32 params,
-        uint multiplier
+        uint nBounty
     ) {
         return _processBounty(blockHash, vin, vout);
     }

@@ -48,6 +48,26 @@ module.exports = {
     return instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, ZERO_ADDRESS);
   },
 
+  extractTxParams(hex, tx) {
+    tx = tx || bitcoinjs.Transaction.fromHex(hex);
+    hex = stripTxWitness(hex);
+    expect(bitcoinjs.Transaction.fromHex(hex).getId()).to.equal(tx.getId(), 'bad code: stripTxWitness');
+  
+    // lazily assume that the each input sequence hex is unique
+    let pos = 0;
+    for (const input of tx.ins) {
+      const sequence = input.sequence.toString(16).pad(8).reverseHex()
+      pos = hex.indexOf(sequence, pos);
+      expect(pos).to.be.at.least(0, `input sequence not found: ${sequence}`);
+      pos += 8;
+    }
+  
+    const vinStart = 8; // 2 more bytes for witness flag
+    const vin = hex.substring(vinStart, pos);
+    const vout = hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
+    return [tx.version, vin, vout, tx.locktime];
+  },
+  
   prepareCommitTx(txHash, brand) {
     const txData = txs[txHash];
     const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
@@ -55,7 +75,7 @@ module.exports = {
 
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
-    const [version, vin, vout, locktime] = extractTxParams(txData.hex, tx);
+    const [version, vin, vout, locktime] = this.extractTxParams(txData.hex, tx);
 
     let memo = findMemo(tx.outs)
     let memoLength = 0;
@@ -94,7 +114,7 @@ module.exports = {
 
     // dependency tx
     const dxMeta = txs[dxHash];
-    const [version, vin, vout, locktime] = extractTxParams(dxMeta.hex);
+    const [version, vin, vout, locktime] = this.extractTxParams(dxMeta.hex);
 
     let extra =
       locktime.toString(16).pad(8).reverseHex() +
@@ -133,22 +153,22 @@ module.exports = {
       block = bitcoinjs.Block.fromHex(blocks[block]);
     }
     const MAX_TARGET = 1n<<240n;
-    const target = bitsToTarget(block.bits)
+    const target = this.bitsToTarget(block.bits)
     return MAX_TARGET / target * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18));
   },
-}
 
-function bitsToTarget(bits) {
-  if (bits > 0xffffffff) {
-    throw new Error('"bits" may not be larger than 4 bytes')
-  }
-  const exponent = bits >>> 24
-  if (exponent <= 3) throw new Error('target exponent must be > 3')
-  if (exponent > 32) throw new Error('target exponent must be < 32')
-  const mantissa = bits & 0x007fffff
-  const target = Buffer.alloc(32, 0)
-  target.writeUInt32BE(mantissa << 8, 32 - exponent)
-  return BigInt('0x' + target.toString('hex'));
+  bitsToTarget(bits) {
+    if (bits > 0xffffffff) {
+      throw new Error('"bits" may not be larger than 4 bytes')
+    }
+    const exponent = bits >>> 24
+    if (exponent <= 3) throw new Error('target exponent must be > 3')
+    if (exponent > 32) throw new Error('target exponent must be < 32')
+    const mantissa = bits & 0x007fffff
+    const target = Buffer.alloc(32, 0)
+    target.writeUInt32BE(mantissa << 8, 32 - exponent)
+    return BigInt('0x' + target.toString('hex'));
+  },
 }
 
 function findMemo(outs) {
@@ -194,24 +214,4 @@ function stripTxWitness(hex) {
     tx.setWitness(i, []);
   }
   return tx.toHex();
-}
-
-function extractTxParams(hex, tx) {
-  tx = tx || bitcoinjs.Transaction.fromHex(hex);
-  hex = stripTxWitness(hex);
-  expect(bitcoinjs.Transaction.fromHex(hex).getId()).to.equal(tx.getId(), 'bad code: stripTxWitness');
-
-  // lazily assume that the each input sequence hex is unique
-  let pos = 0;
-  for (const input of tx.ins) {
-    const sequence = input.sequence.toString(16).pad(8).reverseHex()
-    pos = hex.indexOf(sequence, pos);
-    expect(pos).to.be.at.least(0, `input sequence not found: ${sequence}`);
-    pos += 8;
-  }
-
-  const vinStart = 8; // 2 more bytes for witness flag
-  const vin = hex.substring(vinStart, pos);
-  const vout = hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
-  return [tx.version, vin, vout, tx.locktime];
 }
