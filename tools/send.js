@@ -3,9 +3,11 @@ const { btcUtils } = require('./lib/btcUtils');
 const { decShift } = require('./lib/big');
 const Btc = require('bitcoinjs-lib');
 const prompt = require('prompt');
+const utils = require('../test/lib/utils');
 
 const Web3 = require('web3')
 const web3 = new Web3()
+const BN = web3.utils.BN
 
 const accUTALegacy = 'mvxJQTPXkF2ERXKnK5ovnrq7XZFuKmQCKY'
 const accUTASegwit = 'tb1q49239d5pwn63cqhmnnfgu8z6ndzah7dycgcfql'
@@ -111,8 +113,8 @@ async function build(psbt, inputs, recipients, sender) {
             // psbt.signInput(psbt.txInputs.length-1, ECPairs[sender])
             inValue += parseInt(decShift(input.amount, 8))
 
-            for (let i = recIdx; i < recipients.length; ++i) {
-                const rec = recipients[i]
+            while (recIdx < recipients.length) {
+                const rec = recipients[recIdx]
                 const output = rec.txouts[rec.txouts.length-1]
                 const amount = BOUNTY[symbol] // TODO: calculate this
                 if (outValue + amount > inValue) {
@@ -123,7 +125,7 @@ async function build(psbt, inputs, recipients, sender) {
                     script: Buffer.from(output.script.hex, 'hex'),
                     value: amount,
                 })
-                if (psbt.txOutputs.length > MaxOutput) {
+                if (++recIdx >= recipients.length) {
                     console.log('recipients list exhausted')
                     return
                 }
@@ -160,8 +162,13 @@ async function searchForInput(utxos, maxBlocks = 6) {
     utxos.forEach(utxo => {
         utxo.recipients = []
     })
+    const nBounty = 2 + Math.floor(Math.random() * (MaxOutput-2))
+    console.log(`search for the best UTXO for ${nBounty} outputs`)
     for (let n = info.blocks; n > info.blocks-maxBlocks; --n) {
         const block = await btcUtils.requestCryptoAPI(symbol, `blocks/${n}`)
+        if (block.bits == '1d00ffff') {
+            continue    // skip testnet minimum difficulty blocks
+        }
         for (const recipient of block.tx) {
             for (const utxo of utxos) {
                 if (!isHit(utxo.txid, recipient)) {
@@ -174,20 +181,22 @@ async function searchForInput(utxos, maxBlocks = 6) {
                     continue
                 }
                 utxo.recipients.push(tx)
-                if (utxo.recipients.length >= MaxOutput) {
+                if (utxo.recipients.length >= nBounty) {
+                    console.log(`found the first UTXO with enough ${nBounty} bounty outputs`, utxo)
                     return utxo
                 }
             }
         }
     }
+    console.log(`use the best UTXO found`)
     const utxoWithMostRecipient = utxos.reduce((prev, current) => prev.recipients.length > current.recipients.length ? prev : current)
     return utxoWithMostRecipient
 }
 
 function isHit(txid, recipient) {
-    const preimage = txid + recipient
-    const hash = web3.utils.keccak256(Buffer.from(preimage, 'hex'))
-    return parseInt(hash.substring(hash.length-2), 16) % RecipientRate === 0
+    // use (recipient+txid).reverse() for LE(txid)+LE(recipient)
+    const hash = web3.utils.keccak256(Buffer.from(recipient+txid, 'hex').reverse())
+    return new BN(hash, 16).mod(new BN(RecipientRate)).isZero()
 }
 
 doIt()
