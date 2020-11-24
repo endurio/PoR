@@ -109,21 +109,21 @@ contract("PoR", accounts => {
     })
 
     async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
-      const {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
+      const {block, merkle, transaction, extra} = utils.prepareCommitTx(txHash, ENDURIO);
       const blockHash = block.getId();
       await instPoR.commitBlock('0x'+blocks[blockHash].substring(0, 160));
 
       const txData = txs[txHash];
 
-      const extra1 = setMemoLength(extra, memoLength);
+      extra.memoLength = memoLength;
       if (commitRevert) {
         return expectRevert(
-          instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+          instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS),
           commitRevert
         );
       }
 
-      await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
+      await instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS);
       await time.increaseTo(block.timestamp + 60*60);
       const key = keys.find(k => k.address == txData.miner)
       await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
@@ -132,12 +132,6 @@ contract("PoR", accounts => {
       }
 
       return expectEventClaim(utils.claimWithPrevTx(txData, ENDURIO_HASH), block, txData.miner, multiplier);
-
-      function setMemoLength(extra, memoLength) {
-        return extra.slice(0, 8*3) +
-          (memoLength).toString(16).pad(8) +
-          extra.slice(8*4);
-      }
     }
   })
 
@@ -201,7 +195,7 @@ contract("PoR", accounts => {
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
       ]
       for (const txHash of commitTxs) {
-        const {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
+        const {block, merkle, transaction, extra} = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         const txData = txs[txHash];
@@ -217,15 +211,15 @@ contract("PoR", accounts => {
         await testPosPK(posPK);
 
         async function testPosPK(posPK, commitRevert, claimRevert) {
-          const extra1 = setPubKeyPos(extra, posPK);
+          extra.pubkeyPos = posPK;
           if (commitRevert) {
             return expectRevert(
-              instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+              instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS),
               commitRevert
             );
           }
           const ss = await snapshot.take();
-          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
+          await instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS);
           await time.increaseTo(block.timestamp + 60*60);
           if (claimRevert) {
             await expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
@@ -241,12 +235,6 @@ contract("PoR", accounts => {
         expect(script[sigLen+1]).to.equal(33, 'should pubkey length prefix byte is 33');
         return sigLen+2;
       }
-
-      function setPubKeyPos(extra, posPK) {
-        return extra.slice(0, 8*2) +
-          (posPK).toString(16).pad(8) +
-          extra.slice(8*3);
-      }
     })
 
     it("commitTx with no OP_RET", async() => {
@@ -254,11 +242,11 @@ contract("PoR", accounts => {
         'e8c8a653e4bdcad2556c5dc93e1261e89b6eb69c5349a3f49360db68208699d2',
       ]
       for (const txHash of commitTxs) {
-        let {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
+        let {block, merkle, transaction, extra} = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         await expectRevert(
-          instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+          instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS),
           '!OP_RET',
         );
       }
@@ -277,23 +265,28 @@ contract("PoR", accounts => {
       ]
 
       for (const txHash of commitTxs) {
-        let {block, proofs, extra, vin, vout} = utils.prepareCommitTx(txHash, ENDURIO);
+        let {block, merkle, transaction, extra} = utils.prepareCommitTx(txHash, ENDURIO);
         const blockHash = block.getId();
 
         await expectRevert(
-          instPoR.commitTx('0x'+blockHash.reverseHex(), '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+          instPoR.commitTx('0x'+blockHash.reverseHex(), merkle, transaction, extra, ZERO_ADDRESS),
           '!block',
           );
 
         await expectRevert(
-          instPoR.commitTx('0x'+blockHash, '0x'+proofs.slice(64), '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+          instPoR.commitTx('0x'+blockHash, {...merkle, index: merkle.index+1}, transaction, extra, ZERO_ADDRESS),
+          'invalid merkle proof',
+        );
+
+        await expectRevert(
+          instPoR.commitTx('0x'+blockHash, {...merkle, proof: '0x'+merkle.proof.slice(66)}, transaction, extra, ZERO_ADDRESS),
           'invalid merkle proof',
         );
 
         { // snapshot scope
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
-          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
+          await instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS);
           await snapshot.revert(ss);
         }
 
@@ -301,26 +294,27 @@ contract("PoR", accounts => {
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60)
           await expectRevert(
-            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+            instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS),
             'mining time over',
           );
           await snapshot.revert(ss);
         }
 
-        const extra1 = extra.slice(0, 8*4) +
-          (1).toString(16).pad(8) +  // change the miner input index
-          extra.slice(8*5);
+        const extra1 = {
+          ...extra,
+          inputIdx: 1,
+        }
 
         if (tx.ins.length > 1) {
-          await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
+          await instPoR.commitTx('0x'+blockHash, merkle, transaction, extra1, ZERO_ADDRESS);
         } else {
           await expectRevert(
-            instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra1, '0x'+vin, '0x'+vout, ZERO_ADDRESS),
+            instPoR.commitTx('0x'+blockHash, merkle, transaction, extra1, ZERO_ADDRESS),
             'Vin read overrun',
           );
         }
 
-        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+extra, '0x'+vin, '0x'+vout, ZERO_ADDRESS);
+        await instPoR.commitTx('0x'+blockHash, merkle, transaction, extra, ZERO_ADDRESS);
       }
     })
 
