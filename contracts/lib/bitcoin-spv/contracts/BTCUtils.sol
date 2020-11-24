@@ -169,21 +169,17 @@ library BTCUtils {
         uint256 _len = 0;
         uint256 _offset = 1 + _varIntDataLen;
 
-        for (uint256 _i = 0; _i < _nIns; _i ++) {
+        for (uint256 _i = 0; _i < _nIns; _i++) {
             _remaining = _vin.slice(_offset, _vin.length - _offset);
-            // append to inputs outpointTx(32) and outpointIdxLE(4)
-            inputs = abi.encodePacked(inputs, _remaining.slice(0, 32+4));
             _len = determineInputLength(_remaining);
             require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
             if (_i == 0) {  // bounty input always is the first one
                 firstInputSize = _len;
             }
             _offset = _offset + _len;
+            // append to inputs outpointTx(32) and outpointIdxLE(4)
+            inputs = abi.encodePacked(inputs, _remaining.slice(0, 32+4));
         }
-
-        _remaining = _vin.slice(_offset, _vin.length - _offset);
-        _len = determineInputLength(_remaining);
-        require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
     }
 
     /// @notice          Extracts the nth input from the vin (0-indexed)
@@ -445,6 +441,7 @@ library BTCUtils {
 
         require(nOuts > 2, "bounty: not enough outputs");
         uint _bountyIdx = samplingSeed % (nOuts-2) + 1;
+        // revert(bytes32ToHex(bytes32(samplingSeed)));
 
         bytes memory _remaining;
         uint _offset = 1 + _varIntDataLen;
@@ -476,6 +473,39 @@ library BTCUtils {
 
         // return total number of bounty outputs
         nOuts -= 2;
+    }
+
+    function bytes32ToHex(bytes32 value) internal pure returns(string memory) 
+    {
+        bytes memory alphabet = "0123456789abcdef";
+
+        bytes memory str = new bytes(66);
+        str[0] = '0';
+        str[1] = 'x';
+        for (uint256 i = 0; i < 32; i++) {
+            str[2+i*2] = alphabet[uint8(value[i] >> 4)];
+            str[3+i*2] = alphabet[uint8(value[i] & 0x0f)];
+        }
+        return string(str);
+    }
+
+    function uintToString(uint _i) internal pure returns (string memory _uintAsString) {
+        if (_i == 0) {
+            return "0";
+        }
+        uint j = _i;
+        uint len;
+        while (j != 0) {
+            len++;
+            j /= 10;
+        }
+        bytes memory bstr = new bytes(len);
+        uint k = len - 1;
+        while (_i != 0) {
+            bstr[k--] = byte(uint8(48 + _i % 10));
+            _i /= 10;
+        }
+        return string(bstr);
     }
 
     function extractScript(bytes memory _output) internal pure returns (bytes memory) {
