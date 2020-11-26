@@ -214,7 +214,7 @@ contract("BrandMarket", accounts => {
     await instPoR.commitBlock('0x'+header)
     const {block, proofs, extra, vin, vout, memo} = utils.prepareCommitTx(txHash);
     const blockHash = block.getId();
-    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, brandPayer);
+    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, extra, '0x' + vin, '0x' + vout, brandPayer);
     await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
     await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient

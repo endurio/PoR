@@ -33,10 +33,6 @@ contract PoR is DataStructure, IERC20Events {
     uint constant EXTRA_LOCKTIME    = 32*1;
     uint constant EXTRA_MERKLE_IDX  = 32*2;
     uint constant EXTRA_INPUT_IDX   = 32*3;
-    uint constant EXTRA_MEMO_LENGTH = 32*4;
-    uint constant EXTRA_PUBKEY_POS  = 32*5;     uint constant EXTRA_PKH_POS         = 32*5;
-
-    uint constant EXTRA_FLAG_BOUNTY = 255;
 
     // bounty params
     uint constant BOUNTY_MINTXSIZE  = 32*0; // +32
@@ -58,6 +54,12 @@ contract PoR is DataStructure, IERC20Events {
         _reward(blockHash, memoHash, winner.minerData);
     }
 
+    struct ParamClaim {
+        uint32 version;
+        uint32 locktime;
+        uint32 pkhPos;
+    }
+
     /// @param extra       All the following params packed in a single bytes32
     ///     uint32 EXTRA_PKH_POS,   (optional) position of miner PKH in the outpoint raw data
     ///                             (including the first 8-bytes amount for optimization)
@@ -69,21 +71,21 @@ contract PoR is DataStructure, IERC20Events {
     function claimWithPrevTx(
         bytes32             blockHash,     // big-endian
         bytes32             memoHash,
-        bytes   calldata    vin,    // outpoint tx input vector
-        bytes   calldata    vout,   // outpoint tx output vector
-        bytes32             extra
+        bytes      calldata vin,    // outpoint tx input vector
+        bytes      calldata vout,   // outpoint tx output vector
+        ParamClaim calldata extra
     ) external {
         Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
         _requireState(winner.state, TxState.OUTPOINT);
 
         { // stack too deep
-        bytes32 txId = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
+        bytes32 txId = ValidateSPV.calculateTxId(extra.version, vin, vout, extra.locktime);
         require(winner.minerData == bytes20(txId), "outpoint tx mismatch");
         }
 
         { // stack too deep
         bytes memory output = vout.extractOutputAtIndex(winner.outpointIdx);
-        bytes20 pkh = _extractPKH(output, extra.ui32(EXTRA_PKH_POS));
+        bytes20 pkh = _extractPKH(output, extra.pkhPos);
         _reward(blockHash, memoHash, pkh);
         }
     }
@@ -282,8 +284,27 @@ contract PoR is DataStructure, IERC20Events {
         delete winner.bounty;   // mark the bounty is claimed
     }
 
-    /// @param merkleProof The proof's intermediate nodes (digests between leaf and root)
-    /// @param extra       All the following params packed in a single bytes32
+    struct ParamPoR {
+        uint32 inputIdx;
+        uint32 memoLength;
+        uint32 pubkeyPos;
+        bool   bounty;
+    }
+
+    struct ParamTx {
+        uint32  version;
+        uint32  locktime;
+        bytes   vin;
+        bytes   vout;
+    }
+
+    struct ParamMerkle {
+        uint32 index;
+        bytes proof;
+    }
+
+    /// param merkleProof The proof's intermediate nodes (digests between leaf and root)
+    /// param extra       All the following params packed in a single bytes32
     ///     uint1  EXTRA_FLAG_BOUNTY
     ///     uint31
     ///     uint32
@@ -294,12 +315,11 @@ contract PoR is DataStructure, IERC20Events {
     ///     uint32 EXTRA_LOCKTIME    // tx locktime, little endian
     ///     uint32 EXTRA_VERSION     // tx version, little endian
     function commitTx(
-        bytes32             blockHash,
-        bytes   calldata    merkleProof,
-        bytes32             extra,
-        bytes   calldata    vin,    // tx input vector
-        bytes   calldata    vout,   // tx output vector
-        address             payer
+        bytes32              blockHash,
+        ParamMerkle calldata merkle,
+        ParamTx     calldata transaction,
+        ParamPoR    calldata por,
+        address              payer
     ) external {
         { // stack too deep
         uint32 timestamp = headers[blockHash].timestamp;
@@ -308,21 +328,21 @@ contract PoR is DataStructure, IERC20Events {
         }
 
         _Tx memory _tx;
-        _tx.id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), vin, vout, extra.ui32(EXTRA_LOCKTIME));
-        require(ValidateSPV.prove(_tx.id, headers[blockHash].merkleRoot, merkleProof, extra.ui32(EXTRA_MERKLE_IDX)), "invalid merkle proof");
+        _tx.id = ValidateSPV.calculateTxId(transaction.version, transaction.vin, transaction.vout, transaction.locktime);
+        require(ValidateSPV.prove(_tx.id, headers[blockHash].merkleRoot, merkle.proof, merkle.index), "invalid merkle proof");
 
-        if (extra.flag(EXTRA_FLAG_BOUNTY)) {
+        if (por.bounty) {
             (   bytes memory opret,
                 bytes memory script,
                 bytes memory inputs,
                 bytes32 params,
                 uint nBounty
-            ) = _processBounty(blockHash, vin, vout);
+            ) = _processBounty(blockHash, transaction.vin, transaction.vout);
             _tx.opret = opret;
             _tx.bounty = keccak256(abi.encodePacked(params, script, inputs));
             _tx.nBounty = nBounty;
         } else {
-            _tx.opret = vout.extractFirstOpReturn();
+            _tx.opret = transaction.vout.extractFirstOpReturn();
         }
 
         // extract the brand from the first output with OP_RETURN
@@ -330,7 +350,7 @@ contract PoR is DataStructure, IERC20Events {
             blockHash,
             _tx.id,
             _tx.opret,
-            extra.ui32(EXTRA_MEMO_LENGTH),
+            por.memoLength,
             payer
         );
 
@@ -339,13 +359,12 @@ contract PoR is DataStructure, IERC20Events {
 
         // store the outpoint to claim the reward later
         // TODO: move this to extractBountyInputs
-        _tx.input = vin.extractInputAtIndex(extra.ui32(EXTRA_INPUT_IDX));
-        uint posPK = extra.ui32(EXTRA_PUBKEY_POS);
+        _tx.input = transaction.vin.extractInputAtIndex(por.inputIdx);
 
-        if (posPK > 0) {
+        if (por.pubkeyPos > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
             winner.state = TxState.PKH;
-            winner.minerData = _getPKH(_tx.input.slice(32+4+1+posPK, 33));
+            winner.minerData = _getPKH(_tx.input.slice(32+4+1+por.pubkeyPos, 33));
         } else if (_tx.input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
             winner.state = TxState.PKH;

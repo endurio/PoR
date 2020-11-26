@@ -43,9 +43,9 @@ module.exports = {
   },
 
   commitTx(txHash, brand) {
-    const {block, proofs, extra, vin, vout} = this.prepareCommitTx(txHash, brand);
+    const {block, merkle, transaction, extra} = this.prepareCommitTx(txHash, brand);
     const blockHash = block.getId();
-    return instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, ZERO_ADDRESS);
+    return instPoR.commitTx('0x' + blockHash, merkle, transaction, extra, ZERO_ADDRESS);
   },
 
   extractTxParams(hex, tx) {
@@ -63,15 +63,15 @@ module.exports = {
     }
   
     const vinStart = 8; // 2 more bytes for witness flag
-    const vin = hex.substring(vinStart, pos);
-    const vout = hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
+    const vin = '0x'+hex.substring(vinStart, pos);
+    const vout = '0x'+hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
     return [tx.version, vin, vout, tx.locktime];
   },
   
   prepareCommitTx(txHash, brand) {
     const txData = txs[txHash];
     const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-    const [proofs, idx] = getMerkleProof(block, txHash);
+    const [proof, index] = getMerkleProof(block, txHash);
 
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
@@ -91,17 +91,26 @@ module.exports = {
       }
     }
 
-    let extra =
-      '00000000' +
-      '00000000' +
-      '00000000' +  // compressed PK position
-      (memoLength).toString(16).pad(8) +
-      '00000000' +  // miner input index
-      idx.toString(16).pad(8) +   // merkle index
-      locktime.toString(16).pad(8).reverseHex() +
-      version.toString(16).pad(8).reverseHex();
+    const extra = {
+      inputIdx: 0,
+      memoLength,
+      pubkeyPos: 0,
+      bounty: false,
+    }
 
-    return {block, proofs, extra, vin, vout, memo};
+    const transaction = {
+      version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+      locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+      vin,
+      vout,
+    }
+
+    const merkle = {
+      index,
+      proof,
+    }
+
+    return {block, merkle, transaction, extra, memo};
   },
 
   claim(txData, brandHash) {
@@ -116,22 +125,13 @@ module.exports = {
     const dxMeta = txs[dxHash];
     const [version, vin, vout, locktime] = this.extractTxParams(dxMeta.hex);
 
-    let extra =
-      locktime.toString(16).pad(8).reverseHex() +
-      version.toString(16).pad(8).reverseHex();
-    extra = extra.pad(64);
-
-    if (pkhPos) {
-      extra = setPKHPos(extra, pkhPos)
+    const extra = {
+      version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+      locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+      pkhPos: pkhPos || 0,
     }
 
-    return instPoR.claimWithPrevTx('0x' + txData.block, brandHash, '0x' + vin, '0x' + vout, '0x' + extra);
-
-    function setPKHPos(extra, pkhPos) {
-      return extra.slice(0, 8*2) +
-        (pkhPos).toString(16).pad(8) +
-        extra.slice(8*3);
-    }
+    return instPoR.claimWithPrevTx('0x' + txData.block, brandHash, vin, vout, extra);
   },
 
   addressCompare(a, b) {
@@ -202,7 +202,7 @@ function getMerkleProof(block, txid) {
     proof += hash.toString('hex');
   }
 
-  return [proof, index];
+  return ['0x'+proof, index];
 }
 
 function stripTxWitness(hex) {
