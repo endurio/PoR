@@ -3,6 +3,7 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-inline-assembly
 
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "./DataStructure.sol";
 
 /**
@@ -10,7 +11,7 @@ import "./DataStructure.sol";
  *
  * @dev proxy class can't have any (structured) state variable, all state is located in DataStructure
  */
-contract ENDR is DataStructure {
+contract ENDR is DataStructure, ERC20 {
     /**
      * @dev Emitted when the implementation is changed.
      * @param signature 4-bytes function signature.
@@ -23,7 +24,7 @@ contract ENDR is DataStructure {
         address implBrandMarket,
         address implRefNetwork,
         address implPoR
-    ) public {
+    ) public ERC20("Endurio", "ENDR") {
         owner = msg.sender; // responsible for contract upgrade
 
         // delegate call initialize() for each implementations
@@ -31,18 +32,6 @@ contract ENDR is DataStructure {
         mustDelegateCall(implRefNetwork, hex"8129fc1c");
 
         // All ERC20 functions are not upgradable
-        // impls[0xbe45fd62] = implERC20;          // ENDR.transfer
-        // impls[0x06fdde03] = implERC20;          // name
-        // impls[0x95d89b41] = implERC20;          // symbol
-        // impls[0x313ce567] = implERC20;          // decimals
-        // impls[0x18160ddd] = implERC20;          // totalSupply
-        // impls[0x70a08231] = implERC20;          // balanceOf
-        // impls[0xa9059cbb] = implERC20;          // transfer
-        // impls[0xdd62ed3e] = implERC20;          // allowance
-        // impls[0x095ea7b3] = implERC20;          // approve
-        // impls[0x23b872dd] = implERC20;          // transferFrom
-        // impls[0x39509351] = implERC20;          // increaseAllowance
-        // impls[0xa457c2d7] = implERC20;          // decreaseAllowance
 
         // generator script: change the contract name in export part
         // (export CONTRACT=BrandMarket; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
@@ -52,7 +41,9 @@ contract ENDR is DataStructure {
         impls[0x84cc9dfb] = implPoR;    // claim
         impls[0x94457260] = implPoR;    // claimWithPrevTx
         impls[0xcc569628] = implPoR;    // getWinner
+        impls[0xc805084b] = implPoR;    // claimBounty
         impls[0x84c74f05] = implPoR;    // commitTx
+        impls[0x6ec1c142] = implPoR;    // processBounty
         impls[0xddcf8cd8] = implPoR;    // getBlockWinner
         impls[0xd02898cf] = implPoR;    // commitBlock
         impls[0x495dd54b] = implPoR;    // registerMiner
