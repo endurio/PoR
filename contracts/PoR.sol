@@ -329,30 +329,34 @@ contract PoR is DataStructure, IERC20Events {
     ) external {
         // block
         uint blockHash = uint(params.header.hash256()).reverseUint256(); // always use BE for block hash
-
-        // header can be of any size
         uint target = params.header.extractTarget();
+        bytes32 memoHash;
+
+        { // stack too deep
+        uint multiplier;
+        (memoHash, multiplier) = _processMemo(params.vout.extractFirstOpReturn(), params.memoLength);
+        if (multiplier > 1) {
+            target /= multiplier;
+        }
+        }
+
         // Require that the header has sufficient work
         require(blockHash <= target, "insufficient work");
 
+        Reward storage reward = rewards[bytes32(blockHash)][memoHash];
+
         // tx
+        { // stack too deep 
         bytes32 txid = ValidateSPV.calculateTxId(params.version, params.vin, params.vout, params.locktime);
         require(ValidateSPV.prove(txid, params.header.extractMerkleRootLE().toBytes32(), params.merkleProof, params.merkleIndex), "invalid merkle proof");
-
-        uint rewardRate = MAX_TARGET / target;
-        (bytes32 memoHash, uint multiplier) = _processMemo(params.vout.extractFirstOpReturn(), params.memoLength);
-        if (multiplier > 1) {
-            require(blockHash < target / multiplier, "insufficient work for multiplied target");
-            rewardRate *= multiplier;
-        }
-
-        Reward storage reward = rewards[bytes32(blockHash)][memoHash];
 
         if (reward.txid != 0) {
             uint oldRank = uint(keccak256(abi.encodePacked(blockHash, reward.txid)));
             uint newRank = uint(keccak256(abi.encodePacked(blockHash, txid)));
             // accept the same rank here to allow re-commiting the same tx to change the input index
             require(newRank <= oldRank, "better tx committed");
+        }
+        reward.txid = txid;
         }
 
         { // stack too deep
@@ -362,9 +366,8 @@ contract PoR is DataStructure, IERC20Events {
         }
 
         // for both new and replacing winner
-        reward.amount = _getBrandReward(memoHash, params.payer, rewardRate);
+        reward.amount = _getBrandReward(memoHash, params.payer, MAX_TARGET / target);
         reward.payer = params.payer;
-        reward.txid = txid;
 
         // store the outpoint to claim the reward later
         bytes memory input = params.vin.extractInputAtIndex(params.inputIndex);
@@ -621,7 +624,7 @@ contract PoR is DataStructure, IERC20Events {
             return rewardRate;
         }
         Brand storage brand = brands[memoHash][payer];
-        uint payRate = brand.payRate;
+        uint payRate = brand.payRate;   // TODO: is the expiration checked here?
         require(payRate > 0, "brand not active");
         return CapMath.mul(payRate, rewardRate) / ENDURIO_PAYRATE;
     }

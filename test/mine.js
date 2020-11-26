@@ -58,17 +58,17 @@ contract("PoR", accounts => {
       desc: 'x3',
       tx: '3ef4453b2cfff417c4c37e3fa2ec0922162262d49ffe5d43f8c010709cfb4b11',
       params: {memoLength: ENDURIO.length},
-      expect: {commitRevert: "insufficient work for multiplied target"},
+      expect: {commitRevert: "insufficient work"},
     }, {
       desc: 'x6',
       tx: 'b9abf8270a01d1faa8afe016f4db80e7f3e71a59bcad4238b75a290ebbf37321',
       params: {memoLength: ENDURIO.length},
-      expect: {commitRevert: "insufficient work for multiplied target"},
+      expect: {commitRevert: "insufficient work"},
     }, {
       desc: 'x136',
       tx: 'b0804780ba68abd358a0fc66d2a7f29fd1f5b11382cb73806ba8b7e3504460bb',
       params: {memoLength: ENDURIO.length},
-      expect: {commitRevert: "insufficient work for multiplied target"},
+      expect: {commitRevert: "insufficient work"},
     }, {
       desc: '(no x)',
       tx: 'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
