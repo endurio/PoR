@@ -30,6 +30,7 @@ contract DataStructure {
 
     // Poof of Reference //
     mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
+    mapping(bytes32 => mapping(bytes32 => Reward)) internal rewards;
     mapping(bytes32 => Header) internal headers;
 
     // constant
@@ -39,6 +40,8 @@ contract DataStructure {
 
     // events
     event GlobalConfig(uint comRate, uint levelStep);
+
+    // TODO: Activated and Deactivaed?
     event Active(
         bytes32 indexed memoHash,
         address indexed payer,
@@ -51,7 +54,7 @@ contract DataStructure {
         bytes32 indexed memoHash,
         address indexed payer
     );
-    event Reward(
+    event Rewarded(
         bytes32 indexed memoHash,
         address indexed payer,
         address indexed miner,
@@ -143,4 +146,14 @@ struct Transaction {
     TxState state;
     uint32  nBounty;        // bounty output count
     bytes32 bounty;
+}
+
+/// timestamp can be shared between many memoHash of the same block,
+/// but this will be changed to commitment later so let's keep it here
+struct Reward {
+    bytes32 txid;       // TODO: store rank instead
+    uint    amount;
+    address payer;
+    uint96  timestamp;  // TODO: test whether this is tightly packed
+    bytes20 pkh;
 }

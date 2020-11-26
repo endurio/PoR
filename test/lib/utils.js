@@ -4,6 +4,7 @@ const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
 const { blocks, txs } = require('../data/por');
 const { decShift } = require('../../tools/lib/big');
+const { time } = require('@openzeppelin/test-helpers');
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -43,9 +44,8 @@ module.exports = {
   },
 
   commitTx(txHash, brand) {
-    const {block, merkle, transaction, extra} = this.prepareCommitTx(txHash, brand);
-    const blockHash = block.getId();
-    return instPoR.commitTx('0x' + blockHash, merkle, transaction, extra, ZERO_ADDRESS);
+    const {params, outpoint} = this.prepareCommit({txHash, brand});
+    return instPoR.commit(params, outpoint)
   },
 
   extractTxParams(hex, tx) {
@@ -67,11 +67,27 @@ module.exports = {
     const vout = '0x'+hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
     return [tx.version, vin, vout, tx.locktime];
   },
-  
-  prepareCommitTx(txHash, brand) {
+
+  timeToClaim(txHash) {
+    const txData = txs[txHash]
+    const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
+    return time.increaseTo(block.timestamp + 60*60);
+  },
+
+  prepareCommit(txParams, outpointParams) {
+    const params = this._prepareCommitTx(txParams)
+    if (params.pubkeyPos) {
+      var outpoint = []
+    } else {
+      var outpoint = this._prepareOutpointTx({...outpointParams, txHash: txParams.txHash})
+    }
+    return {params, outpoint}
+  },
+
+  _prepareCommitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {
     const txData = txs[txHash];
     const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-    const [proof, index] = getMerkleProof(block, txHash);
+    const [merkleProof, merkleIndex] = getMerkleProof(block, txHash);
 
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
@@ -91,26 +107,65 @@ module.exports = {
       }
     }
 
-    const extra = {
-      inputIdx: 0,
-      memoLength,
-      pubkeyPos: 0,
-      bounty: false,
-    }
+    if (pubkeyPos == null) {
+      pubkeyPos = findPubKeyPos(tx.ins[inputIndex].script)
 
-    const transaction = {
+      function findPubKeyPos(script) {
+        const sigLen = script[0];
+        if (script[sigLen+1] != 33) {
+          return 0 // not a pubkey
+        }
+        // expect(script[sigLen+1]).to.equal(33, 'should pubkey length prefix byte is 33');
+        return sigLen+2;
+      }
+    }
+ 
+    return {
+      header: '0x'+blocks[txData.block].substring(0, 160),
+      merkleIndex,
+      merkleProof,
       version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
       locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
-      vin,
-      vout,
+      vin, vout,
+      memoLength,
+      inputIndex,
+      pubkeyPos,
+      payer,
+    }
+  },
+
+  _prepareOutpointTx({txHash, inputIdx=0, pkhPos=0, dxHash}) {
+    const txData = txs[txHash];
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+
+    const script = tx.ins[inputIdx].script
+    if (script && script.length > 0) {
+      if (script.length == 23 && script.slice(0, 3).toString('hex') == '160014') {
+        // redeem script for P2SH-P2WPKH
+        return []
+      }
+      if (script.length >= 33+4 && script[script.length-33-4-1] === 0x21) {
+        // redeem script for P2PKH
+        return []
+      }
+      console.error(script.length)
+      console.error(script.toString('hex'))
     }
 
-    const merkle = {
-      index,
-      proof,
+    dxHash = dxHash || tx.ins[inputIdx].hash.reverse().toString('hex');
+    // dependency tx
+    const dxMeta = txs[dxHash];
+    if (!dxMeta) {
+      return [] // there's no data for dx here
     }
+    const [version, vin, vout, locktime] = this.extractTxParams(dxMeta.hex);
 
-    return {block, merkle, transaction, extra, memo};
+    return [{
+      version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+      locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+      vin, vout,
+      pkhPos,
+    }]
   },
 
   claim(txData, brandHash) {

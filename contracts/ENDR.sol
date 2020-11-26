@@ -39,13 +39,7 @@ contract ENDR is DataStructure, ERC20 {
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
         impls[0x84cc9dfb] = implPoR;    // claim
-        impls[0xf4801418] = implPoR;    // claimWithPrevTx
-        impls[0xcc569628] = implPoR;    // getWinner
-        impls[0xc805084b] = implPoR;    // claimBounty
-        impls[0xe4463d61] = implPoR;    // commitTx
-        impls[0x6ec1c142] = implPoR;    // processBounty
-        impls[0xddcf8cd8] = implPoR;    // getBlockWinner
-        impls[0xd02898cf] = implPoR;    // commitBlock
+        impls[0xb95a3500] = implPoR;    // commit
         impls[0x495dd54b] = implPoR;    // registerMiner
         impls[0x0aa0738f] = implPoR;    // changeMiner
         impls[0x8129fc1c] = implRefNetwork;     // initialize

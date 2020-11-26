@@ -49,119 +49,127 @@ contract PoR is DataStructure, IERC20Events {
         bytes32 blockHash,  // big-endian
         bytes32 memoHash
     ) external {
-        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
-        _requireState(winner.state, TxState.PKH);
-        _reward(blockHash, memoHash, winner.minerData);
+        Reward storage reward = rewards[blockHash][memoHash];
+        uint timestamp = reward.timestamp;
+        require(timestamp > 0, "!reward");  // !tx
+        require(!_minable(timestamp), "too soon");
+
+        address miner = miners[reward.pkh];
+        require(miner != address(0x0), "unregistered PKH");
+        // save a SLOAD here
+        address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : reward.payer;
+        IRefNet(address(this)).reward(miner, payer, reward.amount, memoHash, blockHash);
+        delete rewards[blockHash][memoHash];
     }
 
-    struct ParamClaim {
-        uint32 version;
-        uint32 locktime;
-        uint32 pkhPos;
-    }
+    // struct ParamClaim {
+    //     uint32 version;
+    //     uint32 locktime;
+    //     uint32 pkhPos;
+    // }
 
-    /// @param extra       All the following params packed in a single bytes32
-    ///     uint32 EXTRA_PKH_POS,   (optional) position of miner PKH in the outpoint raw data
-    ///                             (including the first 8-bytes amount for optimization)
-    ///     uint32
-    ///     uint32
-    ///     uint32
-    ///     uint32 EXTRA_LOCKTIME,  tx locktime
-    ///     uint32 EXTRA_VERSION,   tx version
-    function claimWithPrevTx(
-        bytes32             blockHash,     // big-endian
-        bytes32             memoHash,
-        bytes      calldata vin,    // outpoint tx input vector
-        bytes      calldata vout,   // outpoint tx output vector
-        ParamClaim calldata extra
-    ) external {
-        Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
-        _requireState(winner.state, TxState.OUTPOINT);
+    // /// @param extra       All the following params packed in a single bytes32
+    // ///     uint32 EXTRA_PKH_POS,   (optional) position of miner PKH in the outpoint raw data
+    // ///                             (including the first 8-bytes amount for optimization)
+    // ///     uint32
+    // ///     uint32
+    // ///     uint32
+    // ///     uint32 EXTRA_LOCKTIME,  tx locktime
+    // ///     uint32 EXTRA_VERSION,   tx version
+    // function claimWithPrevTx(
+    //     bytes32             blockHash,     // big-endian
+    //     bytes32             memoHash,
+    //     bytes      calldata vin,    // outpoint tx input vector
+    //     bytes      calldata vout,   // outpoint tx output vector
+    //     ParamClaim calldata extra
+    // ) external {
+    //     Transaction storage winner = _mustGetBlockWinner(blockHash, memoHash);
+    //     _requireState(winner.state, TxState.OUTPOINT);
 
-        { // stack too deep
-        bytes32 txId = ValidateSPV.calculateTxId(extra.version, vin, vout, extra.locktime);
-        require(winner.minerData == bytes20(txId), "outpoint tx mismatch");
-        }
+    //     { // stack too deep
+    //     bytes32 txId = ValidateSPV.calculateTxId(extra.version, vin, vout, extra.locktime);
+    //     require(winner.minerData == bytes20(txId), "outpoint tx mismatch");
+    //     }
 
-        { // stack too deep
-        bytes memory output = vout.extractOutputAtIndex(winner.outpointIdx);
-        bytes20 pkh = _extractPKH(output, extra.pkhPos);
-        _reward(blockHash, memoHash, pkh);
-        }
-    }
+    //     { // stack too deep
+    //     bytes memory output = vout.extractOutputAtIndex(winner.outpointIdx);
+    //     bytes20 pkh = _extractPKH(output, extra.pkhPos);
+    //     _reward(blockHash, memoHash, pkh);
+    //     }
+    // }
 
-    function _requireState(TxState state, TxState expected) internal pure {
-        if (state == expected) return;
-        require(state != TxState.PKH, "!OUTPOINT: use claim instead");
-        require(state != TxState.OUTPOINT, "!PKH: use claimWithPrevTx instead");
-        require(state != TxState.CLAIMED, "already claimed");
-    }
+    // function _requireState(TxState state, TxState expected) internal pure {
+    //     if (state == expected) return;
+    //     require(state != TxState.PKH, "!OUTPOINT: use claim instead");
+    //     require(state != TxState.OUTPOINT, "!PKH: use claimWithPrevTx instead");
+    //     require(state != TxState.CLAIMED, "already claimed");
+    // }
 
-    function _mustGetBlockWinner(
-        bytes32 blockHash,
-        bytes32 memoHash
-    ) internal view returns (Transaction storage winner) {
-        Header storage header = headers[blockHash];
-        require(!_minable(header.timestamp), "mining time not over");  // including cleaned up timestamp
-        winner = header.winner[memoHash];
-        require(winner.id != 0, "!tx");
-    }
+    // function _mustGetBlockWinner(
+    //     bytes32 blockHash,
+    //     bytes32 memoHash
+    // ) internal view returns (Transaction storage winner) {
+    //     Header storage header = headers[blockHash];
+    //     require(!_minable(header.timestamp), "mining time not over");  // including cleaned up timestamp
+    //     winner = header.winner[memoHash];
+    //     require(winner.id != 0, "!tx");
+    // }
 
-    function getWinner(
-        bytes32 blockHash,  // big-endian
-        bytes32 memoHash
-    ) external view returns (
-        bool    claimable,
-        bytes32 id,
-        uint    reward,
-        address payer,
-        bytes20 minerData,
-        uint32  outpointIdx,
-        TxState state
-    ) {
-        Header storage header = headers[blockHash];
-        Transaction storage winner = header.winner[memoHash];
-        return (
-            !_minable(header.timestamp),
-            winner.id,
-            winner.reward,
-            winner.payer,
-            winner.minerData,
-            winner.outpointIdx,
-            winner.state
-        );
-    }
+    // function getWinner(
+    //     bytes32 blockHash,  // big-endian
+    //     bytes32 memoHash
+    // ) external view returns (
+    //     bool    claimable,
+    //     bytes32 id,
+    //     uint    reward,
+    //     address payer,
+    //     bytes20 minerData,
+    //     uint32  outpointIdx,
+    //     TxState state
+    // ) {
+    //     Header storage header = headers[blockHash];
+    //     Transaction storage winner = header.winner[memoHash];
+    //     return (
+    //         !_minable(header.timestamp),
+    //         winner.id,
+    //         winner.reward,
+    //         winner.payer,
+    //         winner.minerData,
+    //         winner.outpointIdx,
+    //         winner.state
+    //     );
+    // }
 
     /**
      * for PoR to pay for the miner
      */
-    function _reward(
-        bytes32 blockHash,
-        bytes32 memoHash,
-        bytes20 pkh
-    ) internal {
-        address miner = miners[pkh];
-        require(miner != address(0x0), "unregistered PKH");
-        Transaction storage winner = headers[blockHash].winner[memoHash];
-        uint reward = winner.reward;
-        if (winner.nBounty > 0) {
-            require(winner.bounty == 0, "bounty unclaimed");
-            reward = CapMath.mul(reward, winner.nBounty*2);
-        }
-        address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : winner.payer;
-        IRefNet(address(this)).reward(miner, payer, reward, memoHash, blockHash);
-        // TODO: removing _cleanUp seems to make the gas usage lower
-        _cleanUp(blockHash, memoHash);
-    }
+    // function _reward(
+    //     bytes32 blockHash,
+    //     bytes32 memoHash,
+    //     bytes20 pkh
+    // ) internal {
+    //     address miner = miners[pkh];
+    //     require(miner != address(0x0), "unregistered PKH");
+    //     Transaction storage winner = headers[blockHash].winner[memoHash];
+    //     uint reward = winner.reward;
+    //     if (winner.nBounty > 0) {
+    //         require(winner.bounty == 0, "bounty unclaimed");
+    //         reward = CapMath.mul(reward, winner.nBounty*2);
+    //     }
+    //     address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : winner.payer;
+    //     IRefNet(address(this)).reward(miner, payer, reward, memoHash, blockHash);
+    //     // TODO: removing _cleanUp seems to make the gas usage lower
+    //     _cleanUp(blockHash, memoHash);
+    // }
 
-    function _cleanUp(bytes32 blockHash, bytes32 memoHash) internal {
-        Header storage header = headers[blockHash];
-        delete header.winner[memoHash];
+    // function _cleanUp(bytes32 blockHash, bytes32 memoHash) internal {
+    //     Header storage header = headers[blockHash];
+    //     delete header.winner[memoHash];
 
-        if (header.relayer == msg.sender) {
-            delete headers[blockHash];  // TODO: save this for some other time
-        }
-    }
+    //     if (header.relayer == msg.sender) {
+    //         delete headers[blockHash];  // TODO: save this for some other time
+    //     }
+    // }
 
     function _extractPKH(
         bytes   memory  output,
@@ -208,100 +216,199 @@ contract PoR is DataStructure, IERC20Events {
     ///     uint32 EXTRA_MERKLE_IDX the merkle leaf's index in the tree (0-indexed)
     ///     uint32 EXTRA_LOCKTIME,  tx locktime
     ///     uint32 EXTRA_VERSION,   tx version
-    function claimBounty(
-        bytes32[] calldata words,
-        bytes[] calldata buffers
-    ) external {
-        // bytes32 blockHash = words[words.length-1]
-        // bytes32 memoHash = words[words.length-2]
+    // function claimBounty(
+    //     bytes32[] calldata words,
+    //     bytes[] calldata buffers
+    // ) external {
+    //     // bytes32 blockHash = words[words.length-1]
+    //     // bytes32 memoHash = words[words.length-2]
 
-        // bytes memory headerBytes = buffers[buffers.length-1]
-        // bytes memory merkleProof = buffers[buffers.length-2]
+    //     // bytes memory headerBytes = buffers[buffers.length-1]
+    //     // bytes memory merkleProof = buffers[buffers.length-2]
 
-        // overflowable: unexploitable
-        require(headers[words[words.length-1]].timestamp - buffers[buffers.length-1].extractTimestamp() <= BOUNTY_TIME, "block too old");
+    //     // overflowable: unexploitable
+    //     require(headers[words[words.length-1]].timestamp - buffers[buffers.length-1].extractTimestamp() <= BOUNTY_TIME, "block too old");
 
-        Transaction storage winner = _mustGetBlockWinner(words[words.length-1], words[words.length-2]);
+    //     Transaction storage winner = _mustGetBlockWinner(words[words.length-1], words[words.length-2]);
 
-        { // stack too deep
-        uint target = buffers[buffers.length-1].extractTarget();
-        // Require that the header has sufficient work
-        require(uint(buffers[buffers.length-1].hash256()).reverseUint256() <= target, "insufficient work");
-        // bounty reference block must have the same target as the mining block
+    //     { // stack too deep
+    //     uint target = buffers[buffers.length-1].extractTarget();
+    //     // Require that the header has sufficient work
+    //     require(uint(buffers[buffers.length-1].hash256()).reverseUint256() <= target, "insufficient work");
+    //     // bounty reference block must have the same target as the mining block
 
-        // A single (BTC) retarget never changes the target by more than a factor of 4 either way to prevent large changes in difficulty.
-        // To support more re-targeting protocols and testnet, we limit to factor of 2 upward before triggering an expensive reward retarget.
-        target /= headers[words[words.length-1]].target;
-        if (target >= 2) { // bounty reference block target is too week
-            winner.reward /= target;
-        }
-        }
+    //     // A single (BTC) retarget never changes the target by more than a factor of 4 either way to prevent large changes in difficulty.
+    //     // To support more re-targeting protocols and testnet, we limit to factor of 2 upward before triggering an expensive reward retarget.
+    //     target /= headers[words[words.length-1]].target;
+    //     if (target >= 2) { // bounty reference block target is too week
+    //         winner.reward /= target;
+    //     }
+    //     }
 
-        // TBD: do we need to verify winner.state here?
-        // require(winner.state != TxState.CLAIMED, "already claimed");
+    //     // TBD: do we need to verify winner.state here?
+    //     // require(winner.state != TxState.CLAIMED, "already claimed");
 
-        bytes32 recipient;
-        { // stack too deep
-        bytes32 extra = words[0];
-        recipient = ValidateSPV.calculateTxId(
-            extra.ui32(EXTRA_VERSION),
-            buffers[0],
-            buffers[1],
-            extra.ui32(EXTRA_LOCKTIME));
-        require(ValidateSPV.prove(
-            recipient,
-            buffers[buffers.length-1].extractMerkleRootLE().toBytes32(),
-            buffers[buffers.length-2],
-            extra.ui32(EXTRA_MERKLE_IDX)
-        ), "invalid merkle proof");
-        // TODO: verify that the the ref tx does not have any OP_RET
-        }
+    //     bytes32 recipient;
+    //     { // stack too deep
+    //     bytes32 extra = words[0];
+    //     recipient = ValidateSPV.calculateTxId(
+    //         extra.ui32(EXTRA_VERSION),
+    //         buffers[0],
+    //         buffers[1],
+    //         extra.ui32(EXTRA_LOCKTIME));
+    //     require(ValidateSPV.prove(
+    //         recipient,
+    //         buffers[buffers.length-1].extractMerkleRootLE().toBytes32(),
+    //         buffers[buffers.length-2],
+    //         extra.ui32(EXTRA_MERKLE_IDX)
+    //     ), "invalid merkle proof");
+    //     // TODO: verify that the the ref tx does not have any OP_RET
+    //     }
 
-        uint inValue;
-        bytes32 params = words[words.length-3];
+    //     uint inValue;
+    //     bytes32 params = words[words.length-3];
 
-        { // stack too deep
-        bytes memory bountyPreimage = abi.encodePacked(params, buffers[1].extractOutputAtIndex(uint(-1)).extractScript());
-        for (uint i = 1; i < words.length-3; ++i) {
-            bytes32 extra = words[i];
-            bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), buffers[i*2], buffers[i*2+1], extra.ui32(EXTRA_LOCKTIME));
-            if (i == 1) {
-                require(uint(keccak256(abi.encodePacked(recipient, id).reverseEndianness())) % RECIPIENT_RATE == 0, "invalid recipient");
-            }
-            uint idx = extra.ui32(EXTRA_INPUT_IDX);
-            inValue += buffers[i*2+1].extractOutputAtIndex(idx).extractValue();
-            bountyPreimage = abi.encodePacked(bountyPreimage, id, abi.encodePacked(uint32(idx)).reverseEndianness());
-        }
-        require(winner.bounty == keccak256(bountyPreimage), "commitment not match");
-        }
+    //     { // stack too deep
+    //     bytes memory bountyPreimage = abi.encodePacked(params, buffers[1].extractOutputAtIndex(uint(-1)).extractScript());
+    //     for (uint i = 1; i < words.length-3; ++i) {
+    //         bytes32 extra = words[i];
+    //         bytes32 id = ValidateSPV.calculateTxId(extra.ui32(EXTRA_VERSION), buffers[i*2], buffers[i*2+1], extra.ui32(EXTRA_LOCKTIME));
+    //         if (i == 1) {
+    //             require(uint(keccak256(abi.encodePacked(recipient, id).reverseEndianness())) % RECIPIENT_RATE == 0, "invalid recipient");
+    //         }
+    //         uint idx = extra.ui32(EXTRA_INPUT_IDX);
+    //         inValue += buffers[i*2+1].extractOutputAtIndex(idx).extractValue();
+    //         bountyPreimage = abi.encodePacked(bountyPreimage, id, abi.encodePacked(uint32(idx)).reverseEndianness());
+    //     }
+    //     require(winner.bounty == keccak256(bountyPreimage), "commitment not match");
+    //     }
 
-        { // stack too deep
-        uint fee = inValue - params.ui64(BOUNTY_TOTALVALUE);    // overflowable: unexploitable
-        fee = CapMath.scaleDown(fee, params.ui32(BOUNTY_MINTXSIZE), params.ui32(BOUNTY_TXSIZE));
-        require(fee <= params.ui64(BOUNTY_MINVALUE), "dust output");
-        }
+    //     { // stack too deep
+    //     uint fee = inValue - params.ui64(BOUNTY_TOTALVALUE);    // overflowable: unexploitable
+    //     fee = CapMath.scaleDown(fee, params.ui32(BOUNTY_MINTXSIZE), params.ui32(BOUNTY_TXSIZE));
+    //     require(fee <= params.ui64(BOUNTY_MINVALUE), "dust output");
+    //     }
 
-        delete winner.bounty;   // mark the bounty is claimed
+    //     delete winner.bounty;   // mark the bounty is claimed
+    // }
+
+    struct ParamCommit {
+        // brand
+        address payer;
+
+        // block
+        bytes   header;
+        uint32  merkleIndex;
+        bytes   merkleProof;
+
+        // tx
+        uint32  version;
+        uint32  locktime;
+        bytes   vin;
+        bytes   vout;
+
+        // PoR
+        uint32  inputIndex;
+        uint32  memoLength;
+        uint32  pubkeyPos;
     }
 
-    struct ParamPoR {
-        uint32 inputIdx;
-        uint32 memoLength;
-        uint32 pubkeyPos;
-        bool   bounty;
-    }
-
-    struct ParamTx {
+    struct ParamOutpoint {
+        uint32  pkhPos;     // (optional) position of miner PKH in the outpoint raw data
+                            // (including the first 8-bytes amount for optimization)
+        // tx
         uint32  version;
         uint32  locktime;
         bytes   vin;
         bytes   vout;
     }
 
-    struct ParamMerkle {
-        uint32 index;
-        bytes proof;
+    function commit(
+        ParamCommit     calldata    params,
+        ParamOutpoint[] calldata    outpoint
+    ) external {
+        // block
+        uint blockHash = uint(params.header.hash256()).reverseUint256(); // always use BE for block hash
+
+        // header can be of any size
+        uint target = params.header.extractTarget();
+        // Require that the header has sufficient work
+        require(blockHash <= target, "insufficient work");
+
+        // tx
+        bytes32 txid = ValidateSPV.calculateTxId(params.version, params.vin, params.vout, params.locktime);
+        require(ValidateSPV.prove(txid, params.header.extractMerkleRootLE().toBytes32(), params.merkleProof, params.merkleIndex), "invalid merkle proof");
+
+        uint rewardRate = MAX_TARGET / target;
+        (bytes32 memoHash, uint multiplier) = _processMemo(params.vout.extractFirstOpReturn(), params.memoLength);
+        if (multiplier > 1) {
+            require(blockHash < target / multiplier, "insufficient work for multiplied target");
+            rewardRate *= multiplier;
+        }
+
+        Reward storage reward = rewards[bytes32(blockHash)][memoHash];
+
+        if (reward.txid != 0) {
+            uint oldRank = uint(keccak256(abi.encodePacked(blockHash, reward.txid)));
+            uint newRank = uint(keccak256(abi.encodePacked(blockHash, txid)));
+            // accept the same rank here to allow re-commiting the same tx to change the input index
+            require(newRank <= oldRank, "better tx committed");
+        }
+
+        { // stack too deep
+        uint96 timestamp = params.header.extractTimestamp();
+        require(_minable(timestamp), "mining time over");
+        reward.timestamp = timestamp;
+        }
+
+        // for both new and replacing winner
+        reward.amount = _getBrandReward(memoHash, params.payer, rewardRate);
+        reward.payer = params.payer;
+        reward.txid = txid;
+
+        // store the outpoint to claim the reward later
+        bytes memory input = params.vin.extractInputAtIndex(params.inputIndex);
+
+        if (params.pubkeyPos > 0) {
+            // custom P2SH redeem script with manual compressed PubKey position
+            reward.pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
+            require(outpoint.length == 0, "redundant outpoint for P2SH");               // DEBUG ONLY
+        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
+            // redeem script for P2SH-P2WPKH
+            reward.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
+            require(outpoint.length == 0, "redundant outpoint for P2SH-P2WPKH");        // DEBUG ONLY
+        } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
+            // redeem script for P2PKH
+            reward.pkh = _getPKH(input.slice(input.length-33-4, 33));
+            require(outpoint.length == 0, "redundant outpoint for P2PKH");              // DEBUG ONLY
+        } else {
+            // redeem script for P2WPKH
+            bytes32 otxid = ValidateSPV.calculateTxId(outpoint[0].version, outpoint[0].vin, outpoint[0].vout, outpoint[0].locktime);
+            require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
+            uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
+            bytes memory output = outpoint[0].vout.extractOutputAtIndex(oIdx);
+            reward.pkh = _extractPKH(output, outpoint[0].pkhPos);
+        }
     }
+
+    // struct ParamPoR {
+    //     uint32 inputIdx;
+    //     uint32 memoLength;
+    //     uint32 pubkeyPos;
+    //     bool   bounty;
+    // }
+
+    // struct ParamTx {
+    //     uint32  version;
+    //     uint32  locktime;
+    //     bytes   vin;
+    //     bytes   vout;
+    // }
+
+    // struct ParamMerkle {
+    //     uint32 index;
+    //     bytes proof;
+    // }
 
     /// param merkleProof The proof's intermediate nodes (digests between leaf and root)
     /// param extra       All the following params packed in a single bytes32
@@ -314,179 +421,179 @@ contract PoR is DataStructure, IERC20Events {
     ///     uint32 EXTRA_MERKLE_IDX  // the merkle leaf's index in the tree (0-indexed)
     ///     uint32 EXTRA_LOCKTIME    // tx locktime, little endian
     ///     uint32 EXTRA_VERSION     // tx version, little endian
-    function commitTx(
-        bytes32              blockHash,
-        ParamMerkle calldata merkle,
-        ParamTx     calldata transaction,
-        ParamPoR    calldata por,
-        address              payer
-    ) external {
-        { // stack too deep
-        uint32 timestamp = headers[blockHash].timestamp;
-        require(timestamp != 0, "!block");
-        require(_minable(timestamp), "mining time over");
-        }
+    // function commitTx(
+    //     bytes32              blockHash,
+    //     ParamMerkle calldata merkle,
+    //     ParamTx     calldata transaction,
+    //     ParamPoR    calldata por,
+    //     address              payer
+    // ) external {
+    //     { // stack too deep
+    //     uint32 timestamp = headers[blockHash].timestamp;
+    //     require(timestamp != 0, "!block");
+    //     require(_minable(timestamp), "mining time over");
+    //     }
 
-        _Tx memory _tx;
-        _tx.id = ValidateSPV.calculateTxId(transaction.version, transaction.vin, transaction.vout, transaction.locktime);
-        require(ValidateSPV.prove(_tx.id, headers[blockHash].merkleRoot, merkle.proof, merkle.index), "invalid merkle proof");
+    //     _Tx memory _tx;
+    //     _tx.id = ValidateSPV.calculateTxId(transaction.version, transaction.vin, transaction.vout, transaction.locktime);
+    //     require(ValidateSPV.prove(_tx.id, headers[blockHash].merkleRoot, merkle.proof, merkle.index), "invalid merkle proof");
 
-        if (por.bounty) {
-            (   bytes memory opret,
-                bytes memory script,
-                bytes memory inputs,
-                bytes32 params,
-                uint nBounty
-            ) = _processBounty(blockHash, transaction.vin, transaction.vout);
-            _tx.opret = opret;
-            _tx.bounty = keccak256(abi.encodePacked(params, script, inputs));
-            _tx.nBounty = nBounty;
-        } else {
-            _tx.opret = transaction.vout.extractFirstOpReturn();
-        }
+    //     if (por.bounty) {
+    //         (   bytes memory opret,
+    //             bytes memory script,
+    //             bytes memory inputs,
+    //             bytes32 params,
+    //             uint nBounty
+    //         ) = _processBounty(blockHash, transaction.vin, transaction.vout);
+    //         _tx.opret = opret;
+    //         _tx.bounty = keccak256(abi.encodePacked(params, script, inputs));
+    //         _tx.nBounty = nBounty;
+    //     } else {
+    //         _tx.opret = transaction.vout.extractFirstOpReturn();
+    //     }
 
-        // extract the brand from the first output with OP_RETURN
-        Transaction storage winner = _processTx(
-            blockHash,
-            _tx.id,
-            _tx.opret,
-            por.memoLength,
-            payer
-        );
+    //     // extract the brand from the first output with OP_RETURN
+    //     Transaction storage winner = _processTx(
+    //         blockHash,
+    //         _tx.id,
+    //         _tx.opret,
+    //         por.memoLength,
+    //         payer
+    //     );
 
-        winner.bounty = _tx.bounty;
-        winner.nBounty = uint32(_tx.nBounty);
+    //     winner.bounty = _tx.bounty;
+    //     winner.nBounty = uint32(_tx.nBounty);
 
-        // store the outpoint to claim the reward later
-        // TODO: move this to extractBountyInputs
-        _tx.input = transaction.vin.extractInputAtIndex(por.inputIdx);
+    //     // store the outpoint to claim the reward later
+    //     // TODO: move this to extractBountyInputs
+    //     _tx.input = transaction.vin.extractInputAtIndex(por.inputIdx);
 
-        if (por.pubkeyPos > 0) {
-            // custom P2SH redeem script with manual compressed PubKey position
-            winner.state = TxState.PKH;
-            winner.minerData = _getPKH(_tx.input.slice(32+4+1+por.pubkeyPos, 33));
-        } else if (_tx.input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
-            // redeem script for P2SH-P2WPKH
-            winner.state = TxState.PKH;
-            winner.minerData = bytes20(_tx.input.slice(32+4+4, 20).toBytes32());
-        } else if (_tx.input.length >= 32+4+1+33+4 && _tx.input[_tx.input.length-1-33-4] == 0x21) {
-            // redeem script for P2PKH
-            winner.state = TxState.PKH;
-            winner.minerData = _getPKH(_tx.input.slice(_tx.input.length-33-4, 33));
-        } else {
-            winner.state = TxState.OUTPOINT;
-            winner.minerData = bytes20(_tx.input.extractInputTxIdLE());
-            winner.outpointIdx = _tx.input.extractTxIndexLE().reverseEndianness().toUint32(0);
-        }
-    }
+    //     if (por.pubkeyPos > 0) {
+    //         // custom P2SH redeem script with manual compressed PubKey position
+    //         winner.state = TxState.PKH;
+    //         winner.minerData = _getPKH(_tx.input.slice(32+4+1+por.pubkeyPos, 33));
+    //     } else if (_tx.input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
+    //         // redeem script for P2SH-P2WPKH
+    //         winner.state = TxState.PKH;
+    //         winner.minerData = bytes20(_tx.input.slice(32+4+4, 20).toBytes32());
+    //     } else if (_tx.input.length >= 32+4+1+33+4 && _tx.input[_tx.input.length-1-33-4] == 0x21) {
+    //         // redeem script for P2PKH
+    //         winner.state = TxState.PKH;
+    //         winner.minerData = _getPKH(_tx.input.slice(_tx.input.length-33-4, 33));
+    //     } else {
+    //         winner.state = TxState.OUTPOINT;
+    //         winner.minerData = bytes20(_tx.input.extractInputTxIdLE());
+    //         winner.outpointIdx = _tx.input.extractTxIndexLE().reverseEndianness().toUint32(0);
+    //     }
+    // }
 
-    function _processBounty(
-        bytes32         blockHash,
-        bytes   memory  vin,    // tx input vector
-        bytes   memory  vout    // tx output vector
-    ) internal pure returns (
-        bytes memory opret,
-        bytes memory script,
-        bytes memory inputs,
-        bytes32 params,
-        uint nBounty
-    ) {
-        uint outputSize;
-        uint minValue;
-        uint totalValue;
-        uint inputSize;
+    // function _processBounty(
+    //     bytes32         blockHash,
+    //     bytes   memory  vin,    // tx input vector
+    //     bytes   memory  vout    // tx output vector
+    // ) internal pure returns (
+    //     bytes memory opret,
+    //     bytes memory script,
+    //     bytes memory inputs,
+    //     bytes32 params,
+    //     uint nBounty
+    // ) {
+    //     uint outputSize;
+    //     uint minValue;
+    //     uint totalValue;
+    //     uint inputSize;
 
-        (   opret,
-            script,
-            outputSize,
-            minValue,
-            totalValue,
-            nBounty
-        ) = vout.extractBountyOutputs(uint(blockHash));
+    //     (   opret,
+    //         script,
+    //         outputSize,
+    //         minValue,
+    //         totalValue,
+    //         nBounty
+    //     ) = vout.extractBountyOutputs(uint(blockHash));
 
-        (inputSize, inputs) = vin.extractBountyInputs();
+    //     (inputSize, inputs) = vin.extractBountyInputs();
 
-        // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
-        uint minTxSize = inputSize + outputSize + 10;
-        // version(4) + vins + vouts + locktime(4)
-        uint txSize = vin.length + vout.length + 8;
-        uint packed =
-            (MAX_UINT32 & minTxSize)    << BOUNTY_MINTXSIZE |
-            (MAX_UINT32 & txSize)       << BOUNTY_TXSIZE    |
-            (MAX_UINT64 & minValue)     << BOUNTY_MINVALUE  |
-            (MAX_UINT64 & totalValue)   << BOUNTY_TOTALVALUE;
+    //     // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
+    //     uint minTxSize = inputSize + outputSize + 10;
+    //     // version(4) + vins + vouts + locktime(4)
+    //     uint txSize = vin.length + vout.length + 8;
+    //     uint packed =
+    //         (MAX_UINT32 & minTxSize)    << BOUNTY_MINTXSIZE |
+    //         (MAX_UINT32 & txSize)       << BOUNTY_TXSIZE    |
+    //         (MAX_UINT64 & minValue)     << BOUNTY_MINVALUE  |
+    //         (MAX_UINT64 & totalValue)   << BOUNTY_TOTALVALUE;
 
-        params = bytes32(packed);
-    }
+    //     params = bytes32(packed);
+    // }
 
-    function processBounty(
-        bytes32             blockHash,
-        bytes   calldata    vin,    // tx input vector
-        bytes   calldata    vout    // tx output vector
-    ) external pure returns (
-        bytes memory opret,
-        bytes memory script,
-        bytes memory inputs,
-        bytes32 params,
-        uint nBounty
-    ) {
-        return _processBounty(blockHash, vin, vout);
-    }
+    // function processBounty(
+    //     bytes32             blockHash,
+    //     bytes   calldata    vin,    // tx input vector
+    //     bytes   calldata    vout    // tx output vector
+    // ) external pure returns (
+    //     bytes memory opret,
+    //     bytes memory script,
+    //     bytes memory inputs,
+    //     bytes32 params,
+    //     uint nBounty
+    // ) {
+    //     return _processBounty(blockHash, vin, vout);
+    // }
 
-    function getBlockWinner(
-        bytes32 blockHash,
-        bytes32 memoHash
-    ) external view returns (
-        bytes32 id,
-        uint    reward,
-        address payer,
-        bytes20 minerData,
-        uint32  outpointIdx,        
-        bytes32 bounty,
-        TxState state
-    ) {
-        Header storage header = headers[blockHash];
-        Transaction storage winner = header.winner[memoHash];
-        return (
-            winner.id,
-            winner.reward,
-            winner.payer,
-            winner.minerData,
-            winner.outpointIdx,
-            winner.bounty,
-            winner.state
-        );
-    }
+    // function getBlockWinner(
+    //     bytes32 blockHash,
+    //     bytes32 memoHash
+    // ) external view returns (
+    //     bytes32 id,
+    //     uint    reward,
+    //     address payer,
+    //     bytes20 minerData,
+    //     uint32  outpointIdx,        
+    //     bytes32 bounty,
+    //     TxState state
+    // ) {
+    //     Header storage header = headers[blockHash];
+    //     Transaction storage winner = header.winner[memoHash];
+    //     return (
+    //         winner.id,
+    //         winner.reward,
+    //         winner.payer,
+    //         winner.minerData,
+    //         winner.outpointIdx,
+    //         winner.bounty,
+    //         winner.state
+    //     );
+    // }
 
-    function _processTx(
-        bytes32         blockHash,
-        bytes32         txId,
-        bytes   memory  opret,
-        uint            memoLength,
-        address         payer
-    ) internal returns (Transaction storage winner) {
-        Header storage header = headers[blockHash];
-        uint rewardRate = MAX_TARGET / header.target;
-        (bytes32 memoHash, uint multiplier) = _processMemo(opret, memoLength);
-        if (multiplier > 1) {
-            require(uint(blockHash) < header.target / multiplier, "insufficient work for multiplied target");
-            rewardRate *= multiplier;
-        }
+    // function _processTx(
+    //     bytes32         blockHash,
+    //     bytes32         txId,
+    //     bytes   memory  opret,
+    //     uint            memoLength,
+    //     address         payer
+    // ) internal returns (Transaction storage winner) {
+    //     Header storage header = headers[blockHash];
+    //     uint rewardRate = MAX_TARGET / header.target;
+    //     (bytes32 memoHash, uint multiplier) = _processMemo(opret, memoLength);
+    //     if (multiplier > 1) {
+    //         require(uint(blockHash) < header.target / multiplier, "insufficient work for multiplied target");
+    //         rewardRate *= multiplier;
+    //     }
 
-        winner = header.winner[memoHash];
+    //     winner = header.winner[memoHash];
 
-        if (winner.id != 0) {
-            uint oldRank = _txRank(blockHash, winner.id);
-            uint newRank = _txRank(blockHash, txId);
-            // accept the same rank here to allow re-commiting the same tx to change the input index
-            require(newRank <= oldRank, "better tx committed");
-        }
+    //     if (winner.id != 0) {
+    //         uint oldRank = _txRank(blockHash, winner.id);
+    //         uint newRank = _txRank(blockHash, txId);
+    //         // accept the same rank here to allow re-commiting the same tx to change the input index
+    //         require(newRank <= oldRank, "better tx committed");
+    //     }
 
-        // for both new and replacing winner
-        winner.reward = _getBrandReward(memoHash, payer, rewardRate);
-        winner.payer = payer;
-        winner.id = txId;
-    }
+    //     // for both new and replacing winner
+    //     winner.reward = _getBrandReward(memoHash, payer, rewardRate);
+    //     winner.payer = payer;
+    //     winner.id = txId;
+    // }
 
     function _processMemo(
         bytes   memory  opret,
@@ -529,28 +636,6 @@ contract PoR is DataStructure, IERC20Events {
         }
     }
 
-    // block data will be cleaned up when claim is called by the same sender of commitBlock
-    function commitBlock(
-        bytes calldata headerBytes
-    ) external {
-        uint blockHash = uint(headerBytes.hash256()).reverseUint256(); // always use BE for block hash
-        Header storage header = headers[bytes32(blockHash)];
-        require(header.merkleRoot == 0, "block committed");
-
-        // header can be of any size
-        uint target = headerBytes.extractTarget();
-        // Require that the header has sufficient work
-        require(blockHash <= target, "insufficient work");
-
-        uint32 timestamp = headerBytes.extractTimestamp();
-        require(_minable(timestamp), "block too old");
-
-        header.merkleRoot = headerBytes.extractMerkleRootLE().toBytes32();
-        header.timestamp = timestamp;
-        header.relayer = msg.sender;
-        header.target = target;
-    }
-
     /**
      * testing whether the given timestamp is in the commit time
      */
@@ -558,9 +643,9 @@ contract PoR is DataStructure, IERC20Events {
         return time.elapse(timestamp) < MINING_TIME;
     }
 
-    function _txRank(bytes32 blockHash, bytes32 txHash) internal pure returns (uint) {
-        return uint(keccak256(abi.encodePacked(blockHash, txHash)));
-    }
+    // function _txRank(bytes32 blockHash, bytes32 txHash) internal pure returns (uint) {
+    //     return uint(keccak256(abi.encodePacked(blockHash, txHash)));
+    // }
 
     function registerMiner(
         bytes   calldata    pubkey,     // uncompressed, unprefixed 64-bytes pubic key
