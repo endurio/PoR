@@ -43,8 +43,8 @@ module.exports = {
     instPoR = await PoR.at(inst.address);
   },
 
-  commitTx(txHash, brand) {
-    const {params, outpoint, bounty} = this.prepareCommit({txHash, brand});
+  commitTx(txHash, payer, brand) {
+    const {params, outpoint, bounty} = this.prepareCommit({txHash, brand, payer});
     return instPoR.commit(params, outpoint, bounty)
   },
 
@@ -74,6 +74,16 @@ module.exports = {
     return time.increaseTo(block.timestamp + 60*60);
   },
 
+  guessMemo(txHash) {
+    const txData = txs[txHash];
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+    const memo = findMemo(tx.outs);
+    if (memo.indexOf(' ') > 0) {
+      return memo.substring(0, memo.indexOf(' '))
+    }
+    return memo
+  },
+
   prepareCommit(txParams, outpointParams) {
     const params = this._prepareCommitTx(txParams)
     if (params.pubkeyPos) {
@@ -81,8 +91,41 @@ module.exports = {
     } else {
       var outpoint = this._prepareOutpointTx({...outpointParams, txHash: txParams.txHash})
     }
-    const bounty = []
+    const bounty = this._prepareBountyTx(txParams)
     return {params, outpoint, bounty}
+  },
+
+  _prepareBountyTx({txHash}) {
+    const txData = txs[txHash]
+
+    // TODO: search for bounty sampling tx instead
+    if (!txData.bounty) {
+      return []
+    }
+
+    const blockData = blocks[txs[txData.bounty].block]
+    const [merkleProof, merkleIndex] = getMerkleProof(blockData, txData.bounty);
+    const [version, vin, vout, locktime] = this.extractTxParams(txs[txData.bounty].hex);
+    const bounty = {
+      header: '0x'+blockData.substring(0, 160),
+      merkleProof, merkleIndex,
+      version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+      locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+      vin, vout,
+      inputs: [],
+    }
+
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex)
+    for (const input of tx.ins) {
+      const [version, vin, vout, locktime] = this.extractTxParams(txs[input.hash.reverse().toString('hex')].hex);
+      bounty.inputs.push({
+        version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+        locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+        vin, vout,
+      })
+    }
+
+    return [bounty]
   },
 
   _prepareCommitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {
@@ -94,19 +137,10 @@ module.exports = {
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
     const [version, vin, vout, locktime] = this.extractTxParams(txData.hex, tx);
 
-    let memo = findMemo(tx.outs)
-    let memoLength = 0;
-    if (memo) {
-      if (brand) {
-        expect(memo.slice(0, brand.length)).to.equal(brand.toString(), 'unknown memo')
-        memoLength = memo.length > brand.length ? brand.length : 0;
-      } else {
-        if (memo.indexOf(' ') > 0) {
-          memo = memo.substring(0, memo.indexOf(' '))
-          memoLength = memo.length
-        }
-      }
+    if (!brand) {
+      brand = this.guessMemo(txHash)
     }
+    const memoLength = brand.length
 
     if (pubkeyPos == null) {
       pubkeyPos = findPubKeyPos(tx.ins[inputIndex].script)
@@ -170,6 +204,9 @@ module.exports = {
   },
 
   claim(txData, brandHash) {
+    if (_.isString(txData)) {
+      txData = txs[txData]
+    }
     return instPoR.claim('0x' + txData.block, brandHash);
   },
 
@@ -228,17 +265,36 @@ module.exports = {
 }
 
 function findMemo(outs) {
+  const i = findMemoIndex(outs)
+  if (i < 0) {
+    return
+  }
+  const script = outs[i].script;
+  const len = script[1]
+  return script.slice(2, 2 + len).toString()
+}
+
+function findMemoIndex(outs) {
   for (let i = 0; i < outs.length; ++i) {
     const script = outs[i].script;
     if (script[0].toString(16) === '6a') { // OP_RET
-      const len = script[1]
-      const memo = script.slice(2, 2 + len).toString()
-      return memo
+      return i
     }
   }
+  return -1
+}
+
+function hasBounty(outs) {
+  return findMemoIndex(outs) + 2 < outs.length
 }
 
 function getMerkleProof(block, txid) {
+  if (_.isString(block)) {
+    if (block.length < 80) {
+      block = blocks[block]
+    }
+    block = bitcoinjs.Block.fromHex(block)
+  }
   let index = -1;
   const txs = [];
   for (const [i, tx] of Object.entries(block.transactions)) {

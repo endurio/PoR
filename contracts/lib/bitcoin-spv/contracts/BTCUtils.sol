@@ -135,10 +135,10 @@ library BTCUtils {
         return sha256(abi.encodePacked(sha256(_b)));
     }
 
-    /// @notice          Implements bitcoin's hash256 (double sha2)
-    /// @dev             sha2 is precompiled smart contract located at address(2)
-    /// @param _b        The pre-image
-    /// @return          The digest
+    // /// @notice          Implements bitcoin's hash256 (double sha2)
+    // /// @dev             sha2 is precompiled smart contract located at address(2)
+    // /// @param _b        The pre-image
+    // /// @return          The digest
     // function hash256View(bytes memory _b) internal view returns (bytes32 res) {
     //     // solium-disable-next-line security/no-inline-assembly
     //     assembly {
@@ -186,35 +186,6 @@ library BTCUtils {
             // append to inputs outpointTx(32) and outpointIdxLE(4)
             outpointHash[_i] = extractInputTxIdLE(_remaining);
             outpointIdx[_i] = reverseEndianness(extractTxIndexLE(_remaining)).toUint32(0);
-        }
-    }
-
-    /// @param _vin      The vin as a tightly-packed byte array
-    function extractBountyInputs(bytes memory _vin) internal pure returns (
-        uint firstInputSize,
-        bytes memory inputs
-    ) {
-        uint256 _varIntDataLen;
-        uint256 _nIns;
-
-        (_varIntDataLen, _nIns) = parseVarInt(_vin);
-        require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
-
-        bytes memory _remaining;
-
-        uint256 _len = 0;
-        uint256 _offset = 1 + _varIntDataLen;
-
-        for (uint256 _i = 0; _i < _nIns; _i++) {
-            _remaining = _vin.slice(_offset, _vin.length - _offset);
-            _len = determineInputLength(_remaining);
-            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
-            if (_i == 0) {  // bounty input always is the first one
-                firstInputSize = _len;
-            }
-            _offset = _offset + _len;
-            // append to inputs outpointTx(32) and outpointIdxLE(4)
-            inputs = abi.encodePacked(inputs, _remaining.slice(0, 32+4));
         }
     }
 
@@ -468,26 +439,31 @@ library BTCUtils {
         // bytes memory opret,
         uint nOuts
     ) {
+        // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
+        minTxSize += 10;
+        // version(4) + vins + vouts + locktime(4)
+        txSize += _vout.length + 8;
+
         uint minValue = uint(-1);   // max value
 
-        uint _offset;
-        (_offset, nOuts) = parseVarInt(_vout);
-        require(_offset != ERR_BAD_ARG, "Read overrun during VarInt parsing");
+        uint _len;
+        (_len, nOuts) = parseVarInt(_vout);
+        require(_len != ERR_BAD_ARG, "Read overrun during VarInt parsing");
 
         require(nOuts > 2, "bounty: not enough outputs");
         samplingSeed = samplingSeed % (nOuts-2) + 1; // reused as bountyIdx
 
-        ++_offset;
+        ++_len;
 
-        for (uint256 _i = 0; _i < nOuts; _i ++) {
-            _vout = _vout.slice(_offset, _vout.length - _offset);
-            uint _len = determineOutputLength(_vout);
+        for (uint256 _i = 0; _i < nOuts; ++_i) {
+            _vout = _vout.slice(_len, _vout.length - _len);
+            _len = determineOutputLength(_vout);
             require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
-            // if (_i == 0) {
-            //     // the first output must be OP_RETURN
-            //     require(_vout[9] == 0x6a, "bounty: 1st output != OP_RET");
-            //     opret = _vout.slice(11, uint8(_vout[10]));
-            // } else {
+            if (_i == 0) {
+                // // the first output must be OP_RETURN
+                // require(_vout[9] == 0x6a, "bounty: 1st output != OP_RET");
+                // opret = _vout.slice(11, uint8(_vout[10]));
+            } else {
                 uint value = uint(extractValue(_vout));
                 fee -= value;   // unsafe
                 if (_i < nOuts-1) { // exclude the last output (coin change) from minValue
@@ -499,14 +475,8 @@ library BTCUtils {
                         minTxSize += _len; // minTxSize += bountyOutputSize
                     }
                 }
-            // }
-            _offset += _len;
+            }
         }
-
-        // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
-        minTxSize += 10;
-        // version(4) + vins + vouts + locktime(4)
-        txSize += _vout.length + 8;
 
         // fee = CapMath.scaleDown(fee, firstInputSize, txSize);
         require(fee * minTxSize <= minValue * txSize, "bounty: dust output");  // unsave
@@ -514,91 +484,6 @@ library BTCUtils {
         // return total number of bounty outputs
         nOuts -= 2;
         require(nOuts <= 8, "bounty: too many recipients");
-    }
-
-    // TODO: move this function out
-    function extractBountyOutputs(
-        bytes memory _vout,
-        uint samplingSeed
-    ) internal pure returns (
-        bytes memory opret,
-        bytes memory script,
-        uint bountyOutputSize,
-        uint minValue,
-        uint totalValue,
-        uint nOuts
-    ) {
-        uint _varIntDataLen;
-        (_varIntDataLen, nOuts) = parseVarInt(_vout);
-        require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
-
-        require(nOuts > 2, "bounty: not enough outputs");
-        uint _bountyIdx = samplingSeed % (nOuts-2) + 1;
-        // revert(bytes32ToHex(bytes32(samplingSeed)));
-
-        bytes memory _remaining;
-        uint _offset = 1 + _varIntDataLen;
-
-        for (uint256 _i = 0; _i < nOuts; _i ++) {
-            _remaining = _vout.slice(_offset, _vout.length - _offset);
-            uint _len = determineOutputLength(_remaining);
-            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
-            if (_i == 0) {
-                // the first output must be OP_RETURN
-                require(_remaining[9] == 0x6a, "bounty: 1st output != OP_RET");
-                uint _dataLen = uint8(_remaining[10]);
-                opret = _remaining.slice(11, _dataLen);
-            } else {
-                uint value = uint(extractValue(_remaining));
-                totalValue += value;
-                if (_i < nOuts-1) { // exclude the last output (coin change) from minValue
-                    if (value < minValue || minValue == 0) {
-                        minValue = value;
-                    }
-                    if (_i == _bountyIdx) { // bounty output cannot be the last output (coin change)
-                        script = extractScript(_remaining);
-                        bountyOutputSize = _len;
-                    }
-                }
-            }
-            _offset += _len;
-        }
-
-        // return total number of bounty outputs
-        nOuts -= 2;
-    }
-
-    function bytes32ToHex(bytes32 value) internal pure returns(string memory) 
-    {
-        bytes memory alphabet = "0123456789abcdef";
-
-        bytes memory str = new bytes(66);
-        str[0] = '0';
-        str[1] = 'x';
-        for (uint256 i = 0; i < 32; i++) {
-            str[2+i*2] = alphabet[uint8(value[i] >> 4)];
-            str[3+i*2] = alphabet[uint8(value[i] & 0x0f)];
-        }
-        return string(str);
-    }
-
-    function uintToString(uint _i) internal pure returns (string memory _uintAsString) {
-        if (_i == 0) {
-            return "0";
-        }
-        uint j = _i;
-        uint len;
-        while (j != 0) {
-            len++;
-            j /= 10;
-        }
-        bytes memory bstr = new bytes(len);
-        uint k = len - 1;
-        while (_i != 0) {
-            bstr[k--] = byte(uint8(48 + _i % 10));
-            _i /= 10;
-        }
-        return string(bstr);
     }
 
     function extractScript(bytes memory _output) internal pure returns (bytes memory) {

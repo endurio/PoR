@@ -142,9 +142,9 @@ contract("PoR", accounts => {
       const winingTx = 'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78' // intentional typo
 
       const ss = await snapshot.take();
-      await utils.commitTx(losingTx, ENDURIO)
-      await utils.commitTx(winingTx, ENDURIO)
-      await expectRevert(utils.commitTx(losingTx, ENDURIO), 'better tx committed');
+      await utils.commitTx(losingTx)
+      await utils.commitTx(winingTx)
+      await expectRevert(utils.commitTx(losingTx), 'better tx committed');
       await snapshot.revert(ss);
     })
 

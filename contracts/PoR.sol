@@ -184,6 +184,16 @@ contract PoR is DataStructure, IERC20Events {
                     ), 'bounty: inputs mismatch');
                 inValue += bounty[0].inputs[i].vout.extractOutputAtIndex(outpointIdx[i]).extractValue(); // unsafe
             }
+
+            bytes32 sid = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
+            // TODO: change the way recipient is seleced to remove this reverseEndianness
+            require(uint(keccak256(abi.encodePacked(sid, outpointHash[0]).reverseEndianness())) % RECIPIENT_RATE == 0, "bounty: unacceptable recipient");
+            require(ValidateSPV.prove(
+                sid,
+                bounty[0].header.extractMerkleRootLE().toBytes32(),
+                bounty[0].merkleProof,
+                bounty[0].merkleIndex
+            ), "bounty: invalid merkle proof");
             }
 
             rewardRate *= 2 * params.vout.processBountyOutputs(
@@ -236,19 +246,6 @@ contract PoR is DataStructure, IERC20Events {
             // accept the same rank here to allow re-commiting the same tx to change the input index
             require(newRank <= oldRank, "better tx committed");
         }
-
-        if (bounty.length > 0) {
-            bytes32 sid = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
-            // TODO: change the way recipient is seleced to remove this reverseEndianness
-            require(uint(keccak256(abi.encodePacked(sid, txid).reverseEndianness())) % RECIPIENT_RATE == 0, "bounty: unacceptable recipient");
-            require(ValidateSPV.prove(
-                sid,
-                bounty[0].header.extractMerkleRootLE().toBytes32(),
-                bounty[0].merkleProof,
-                bounty[0].merkleIndex
-            ), "bounty: invalid merkle proof");
-        }
-
         reward.txid = txid;
         }
 

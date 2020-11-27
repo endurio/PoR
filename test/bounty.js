@@ -19,8 +19,9 @@ let instPoR;
 let instRN;
 let instBM;
 
+const ENDURIO = Buffer.from('endur.io');
+const ENDURIO_HASH = web3.utils.keccak256(ENDURIO);
 const FOOBAR = Buffer.from('foobar');
-const FOOBAR_HEX = '0x'+FOOBAR.toString('hex');
 const FOOBAR_HASH = web3.utils.keccak256(FOOBAR);
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
@@ -93,36 +94,17 @@ contract("PoR: Bounty Hunter", accounts => {
       ]
 
       for (const txHash of commitTxs) {
-        const txData = txs[txHash]
-        const blockData = blocks[txData.block]
-        const header = blockData.substring(0, 160)
-        await instPoR.commitBlock('0x'+header)
-        const {block, proofs, extra, vin, vout, memo} = utils.prepareCommitTx(txHash);
-        const blockHash = block.getId();
-        // enable the bounty flag
-        const bountyExtra = '8' + extra.substring(1)
-        await instPoR.commitTx('0x'+blockHash, '0x'+proofs, '0x'+bountyExtra, '0x'+vin, '0x'+vout, payer);
-        await time.increaseTo(block.timestamp + 60*60)
-        const miner = keys.find(k => k.address == txData.miner)
-        await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
+        const memo = utils.guessMemo(txHash)
         const memoHash = web3.utils.keccak256(Buffer.from(memo))
 
-        async function claimIt() {
-          const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
-          switch (Number(state)) {
-            case 0: throw "tx already claimed"
-            case 1: return utils.claim(txData, memoHash);
-            case 2: return utils.claimWithPrevTx(txData, memoHash);
-            default: throw `unknown TxState: ${state}`
-          }
-        }
+        await utils.commitTx(txHash, payer)
+        await utils.timeToClaim(txHash)
 
-        await expectRevert(claimIt(), 'bounty unclaimed')
+        const txData = txs[txHash]
+        const miner = keys.find(k => k.address == txData.miner)
+        await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
 
-        const {opret, script, inputs, params, nBounty} = await instPoR.processBounty('0x'+blockHash, '0x'+vin, '0x'+vout)
-        // console.error(opret, script, inputs, params, Number(nBounty))
-
-        const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+        await utils.claim(txHash, memoHash)
 
         // const samplingOutputIdx = new BN(blockHash, 16).mod(new BN(tx.outs.length-2)).toNumber() + 1;
         // console.error(samplingOutputIdx)
@@ -130,46 +112,6 @@ contract("PoR: Bounty Hunter", accounts => {
         // const network = bitcoinjs.networks.testnet
         // console.error(bitcoinjs.address.fromOutputScript(tx.outs[samplingOutputIdx].script, network))
 
-        const words = []
-        const buffers = []
-
-        const sample = utils.prepareCommitTx(txData.bounty)
-
-        words.push('0x'+sample.extra)
-        buffers.push('0x'+sample.vin, '0x'+sample.vout)
-
-        for (const input of tx.ins) {
-          const [version, vin, vout, locktime] = utils.extractTxParams(txs[input.hash.reverse().toString('hex')].hex);
-          const extra =
-            input.index.toString(16).pad(8) +  // miner input index
-            '00000000' +
-            locktime.toString(16).pad(8).reverseHex() +
-            version.toString(16).pad(8).reverseHex();
-          words.push('0x'+extra.pad(64))
-          buffers.push('0x'+vin, '0x'+vout)
-        }
-
-        words.push(params)
-        words.push(memoHash)
-        words.push('0x'+blockHash)
-        buffers.push('0x'+sample.proofs)                                  // sampling tx merkle proofs
-        buffers.push('0x'+blocks[sample.block.getId()].substring(0, 160)) // sampling block header
-
-        console.error(words)
-        console.error(buffers)
-
-        // function isHit(txid, recipient) {
-        //   const preimage = txid + recipient
-        //   const hash = web3.utils.keccak256(Buffer.from(preimage, 'hex'))
-        //   return new BN(hash, 16).mod(new BN(RecipientRate)).isZero()
-        // }
-
-        // console.error(tx.ins[0])
-        // console.error(tx.ins[0].hash.toString('hex'), txData.bounty, isHit(tx.ins[0].hash.toString('hex'), txData.bounty))
-
-        await instPoR.claimBounty(words, buffers)
-
-        const receipt = await claimIt();
         continue
         const recipient = miner.address
         const reward = utils.getExpectedReward(txData.block, payRate)
@@ -199,27 +141,14 @@ contract("PoR: Bounty Hunter", accounts => {
     return miner
   }
 
-  async function mine(txHash, payer = ZERO_ADDRESS) {
+  async function mine(txHash) {
+    await utils.commitTx(txHash)
+    await utils.timeToClaim(txHash)
     const txData = txs[txHash]
-    const blockData = blocks[txData.block]
-    const header = blockData.substring(0, 160)
-    await instPoR.commitBlock('0x'+header)
-    const {block, proofs, extra, vin, vout, memo} = utils.prepareCommitTx(txHash);
-    const blockHash = block.getId();
-    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, '0x' + extra, '0x' + vin, '0x' + vout, payer);
-    await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
     await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
-    const memoHash = web3.utils.keccak256(Buffer.from(memo))
-    const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
-    switch (Number(state)) {
-      case 0: throw "tx already claimed"
-      case 1: var claimReceipt = await utils.claim(txData, memoHash); break;
-      case 2: var claimReceipt = await utils.claimWithPrevTx(txData, memoHash); break;
-      default: throw `unknown TxState: ${state}`
-    }
     return {
-      claimReceipt,
+      claimReceipt: utils.claim(txHash, ENDURIO_HASH),
       miner,
     };
   }
