@@ -44,8 +44,8 @@ module.exports = {
   },
 
   commitTx(txHash, brand) {
-    const {params, outpoint} = this.prepareCommit({txHash, brand});
-    return instPoR.commit(params, outpoint)
+    const {params, outpoint, bounty} = this.prepareCommit({txHash, brand});
+    return instPoR.commit(params, outpoint, bounty)
   },
 
   extractTxParams(hex, tx) {
@@ -81,7 +81,8 @@ module.exports = {
     } else {
       var outpoint = this._prepareOutpointTx({...outpointParams, txHash: txParams.txHash})
     }
-    return {params, outpoint}
+    const bounty = []
+    return {params, outpoint, bounty}
   },
 
   _prepareCommitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {

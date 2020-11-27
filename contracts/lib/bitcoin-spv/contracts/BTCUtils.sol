@@ -154,6 +154,42 @@ library BTCUtils {
     /* ************ */
 
     /// @param _vin      The vin as a tightly-packed byte array
+    function processBountyInputs(
+        bytes memory _vin
+    ) internal pure returns (
+        uint firstInputSize,
+        bytes32[] memory outpointHash,
+        uint[] memory outpointIdx
+    ) {
+        uint256 _varIntDataLen;
+        uint256 _nIns;
+
+        (_varIntDataLen, _nIns) = parseVarInt(_vin);
+        require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
+
+        bytes memory _remaining;
+
+        uint256 _len = 0;
+        uint256 _offset = 1 + _varIntDataLen;
+
+        outpointHash = new bytes32[](_nIns);
+        outpointIdx = new uint[](_nIns);
+
+        for (uint256 _i = 0; _i < _nIns; _i++) {
+            _remaining = _vin.slice(_offset, _vin.length - _offset);
+            _len = determineInputLength(_remaining);
+            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptSig");
+            if (_i == 0) {  // bounty input always is the first one
+                firstInputSize = _len;
+            }
+            _offset += _len;
+            // append to inputs outpointTx(32) and outpointIdxLE(4)
+            outpointHash[_i] = extractInputTxIdLE(_remaining);
+            outpointIdx[_i] = reverseEndianness(extractTxIndexLE(_remaining)).toUint32(0);
+        }
+    }
+
+    /// @param _vin      The vin as a tightly-packed byte array
     function extractBountyInputs(bytes memory _vin) internal pure returns (
         uint firstInputSize,
         bytes memory inputs
@@ -419,8 +455,65 @@ library BTCUtils {
             require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
             _offset += _len;
         }
+    }
 
-        revert("!OP_RET");
+    function processBountyOutputs(
+        bytes memory _vout,
+        uint txSize,        // _vin.length
+        bytes32 bountyScriptKeccak,
+        uint fee,           // inValue
+        uint minTxSize,     // firstInputSize
+        uint samplingSeed
+    ) internal pure returns (
+        // bytes memory opret,
+        uint nOuts
+    ) {
+        uint minValue = uint(-1);   // max value
+
+        uint _offset;
+        (_offset, nOuts) = parseVarInt(_vout);
+        require(_offset != ERR_BAD_ARG, "Read overrun during VarInt parsing");
+
+        require(nOuts > 2, "bounty: not enough outputs");
+        samplingSeed = samplingSeed % (nOuts-2) + 1; // reused as bountyIdx
+
+        ++_offset;
+
+        for (uint256 _i = 0; _i < nOuts; _i ++) {
+            _vout = _vout.slice(_offset, _vout.length - _offset);
+            uint _len = determineOutputLength(_vout);
+            require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
+            // if (_i == 0) {
+            //     // the first output must be OP_RETURN
+            //     require(_vout[9] == 0x6a, "bounty: 1st output != OP_RET");
+            //     opret = _vout.slice(11, uint8(_vout[10]));
+            // } else {
+                uint value = uint(extractValue(_vout));
+                fee -= value;   // unsafe
+                if (_i < nOuts-1) { // exclude the last output (coin change) from minValue
+                    if (value < minValue) {
+                        minValue = value;
+                    }
+                    if (_i == samplingSeed) { // bounty output cannot be the last output (coin change)
+                        require(bountyScriptKeccak == keccak256(extractScript(_vout)), 'bounty: sampling script mismatch');
+                        minTxSize += _len; // minTxSize += bountyOutputSize
+                    }
+                }
+            // }
+            _offset += _len;
+        }
+
+        // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
+        minTxSize += 10;
+        // version(4) + vins + vouts + locktime(4)
+        txSize += _vout.length + 8;
+
+        // fee = CapMath.scaleDown(fee, firstInputSize, txSize);
+        require(fee * minTxSize <= minValue * txSize, "bounty: dust output");  // unsave
+
+        // return total number of bounty outputs
+        nOuts -= 2;
+        require(nOuts <= 8, "bounty: too many recipients");
     }
 
     // TODO: move this function out
