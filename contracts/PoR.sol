@@ -63,46 +63,6 @@ contract PoR is DataStructure, IERC20Events {
         delete rewards[blockHash][memoHash];
     }
 
-    // function getWinner(
-    //     bytes32 blockHash,  // big-endian
-    //     bytes32 memoHash
-    // ) external view returns (
-    //     bool    claimable,
-    //     bytes32 id,
-    //     uint    reward,
-    //     address payer,
-    //     bytes20 minerData,
-    //     uint32  outpointIdx,
-    //     TxState state
-    // ) {
-    //     Header storage header = headers[blockHash];
-    //     Transaction storage winner = header.winner[memoHash];
-    //     return (
-    //         !_minable(header.timestamp),
-    //         winner.id,
-    //         winner.reward,
-    //         winner.payer,
-    //         winner.minerData,
-    //         winner.outpointIdx,
-    //         winner.state
-    //     );
-    // }
-
-    function _extractPKH(
-        bytes   memory  output,
-        uint32          pkhIdx
-    ) internal pure returns (bytes20) {
-        // the first 8 bytes is ussually for amount, so zero index makes no sense here
-        if (pkhIdx > 0) {
-            // pkh location is provided for saving gas
-            return bytes20(output.slice(pkhIdx, 20).toBytes32());
-        }
-        // standard outpoint types: p2pkh, p2wpkh
-        bytes memory pkh = output.extractHash();
-        require(pkh.length == 20, "unsupported PKH in outpoint");
-        return bytes20(pkh.toBytes32());
-    }
-
     struct ParamCommit {
         // brand
         address payer;
@@ -326,6 +286,21 @@ contract PoR is DataStructure, IERC20Events {
             }
             result = result * 10 + (c - 48);
         }
+    }
+
+    function _extractPKH(
+        bytes   memory  output,
+        uint32          pkhIdx
+    ) internal pure returns (bytes20) {
+        // the first 8 bytes is ussually for amount, so zero index makes no sense here
+        if (pkhIdx > 0) {
+            // pkh location is provided for saving gas
+            return bytes20(output.slice(pkhIdx, 20).toBytes32());
+        }
+        // standard outpoint types: p2pkh, p2wpkh
+        bytes memory pkh = output.extractHash();
+        require(pkh.length == 20, "unsupported PKH in outpoint");
+        return bytes20(pkh.toBytes32());
     }
 
     /**
