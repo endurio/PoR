@@ -54,7 +54,6 @@ contract PoR is DataStructure, IERC20Events {
         uint    timestamp
     ) external {
         Reward storage reward = rewards[blockHash][memoHash];
-        require(reward.rank > 0, "!reward");  // !tx
         require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, pkh, amount, timestamp))), "commitment mismatch");
         require(!_minable(timestamp), "too soon");
 

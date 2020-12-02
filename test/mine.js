@@ -348,9 +348,18 @@ contract("PoR", accounts => {
           await snapshot.revert(ss);
         }
 
-        // auto detect PKH position
+        // expect revert on claiming with fake reward
+        const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount+1, mined.timestamp), "commitment mismatch");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount, mined.timestamp-60*60), "commitment mismatch");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, DUMMY_ADDRESS, mined.amount, mined.timestamp), "commitment mismatch");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, mined.pkh, mined.amount, mined.timestamp), "commitment mismatch");
+
+        // honest claim
         await expectEventClaim(utils.claim(commitReceipt), block, txData.miner);
-        await expectRevert(utils.claim(commitReceipt), "!reward");
+
+        // double claim
+        await expectRevert(utils.claim(commitReceipt), "commitment mismatch");
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
