@@ -151,9 +151,11 @@ struct Transaction {
 /// timestamp can be shared between many memoHash of the same block,
 /// but this will be changed to commitment later so let's keep it here
 struct Reward {
-    bytes32 txid;       // TODO: store rank instead
-    uint    amount;
+    uint32  rank;
     address payer;
+
+    uint    amount;
+
     uint96  timestamp;  // TODO: test whether this is tightly packed
     bytes20 pkh;
 }

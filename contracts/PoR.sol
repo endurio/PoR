@@ -240,13 +240,12 @@ contract PoR is DataStructure, IERC20Events {
         bytes32 txid = ValidateSPV.calculateTxId(params.version, params.vin, params.vout, params.locktime);
         require(ValidateSPV.prove(txid, params.header.extractMerkleRootLE().toBytes32(), params.merkleProof, params.merkleIndex), "invalid merkle proof");
 
-        if (reward.txid != 0) {
-            uint oldRank = uint(keccak256(abi.encodePacked(blockHash, reward.txid)));
-            uint newRank = uint(keccak256(abi.encodePacked(blockHash, txid)));
+        uint32 rank = uint32(bytes4(keccak256(abi.encodePacked(blockHash, txid))));
+        if (reward.rank != 0) {
             // accept the same rank here to allow re-commiting the same tx to change the input index
-            require(newRank <= oldRank, "better tx committed");
+            require(rank <= reward.rank, "better tx committed");
         }
-        reward.txid = txid;
+        reward.rank = rank;
         }
 
         { // stack too deep
