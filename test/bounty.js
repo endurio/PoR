@@ -97,14 +97,14 @@ contract("PoR: Bounty Hunter", accounts => {
         const memo = utils.guessMemo(txHash)
         const memoHash = web3.utils.keccak256(Buffer.from(memo))
 
-        await utils.commitTx(txHash, payer)
+        const commitReceipt = await utils.commitTx(txHash, payer)
         await utils.timeToClaim(txHash)
 
         const txData = txs[txHash]
         const miner = keys.find(k => k.address == txData.miner)
         await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
 
-        await utils.claim(txHash, memoHash)
+        await utils.claim(commitReceipt)
 
         // const samplingOutputIdx = new BN(blockHash, 16).mod(new BN(tx.outs.length-2)).toNumber() + 1;
         // console.error(samplingOutputIdx)
@@ -142,13 +142,13 @@ contract("PoR: Bounty Hunter", accounts => {
   }
 
   async function mine(txHash) {
-    await utils.commitTx(txHash)
+    const commitReceipt = await utils.commitTx(txHash)
     await utils.timeToClaim(txHash)
     const txData = txs[txHash]
     const miner = keys.find(k => k.address == txData.miner)
     await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
     return {
-      claimReceipt: utils.claim(txHash, ENDURIO_HASH),
+      claimReceipt: utils.claim(commitReceipt),
       miner,
     };
   }

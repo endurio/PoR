@@ -211,28 +211,9 @@ module.exports = {
     }]
   },
 
-  claim(txData, brandHash) {
-    if (_.isString(txData)) {
-      txData = txs[txData]
-    }
-    return instPoR.claim('0x' + txData.block, brandHash);
-  },
-
-  claimWithPrevTx(txData, brandHash, {inputIdx, pkhPos, dxHash} = {}) {
-    const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-    dxHash = dxHash || tx.ins[inputIdx || 0].hash.reverse().toString('hex');
-
-    // dependency tx
-    const dxMeta = txs[dxHash];
-    const [version, vin, vout, locktime] = this.extractTxParams(dxMeta.hex);
-
-    const extra = {
-      version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
-      locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
-      pkhPos: pkhPos || 0,
-    }
-
-    return instPoR.claimWithPrevTx('0x' + txData.block, brandHash, vin, vout, extra);
+  claim(commitReceipt) {
+    const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
+    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount, mined.timestamp);
   },
 
   addressCompare(a, b) {

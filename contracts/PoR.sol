@@ -47,18 +47,20 @@ contract PoR is DataStructure, IERC20Events {
 
     function claim(
         bytes32 blockHash,  // big-endian
-        bytes32 memoHash
+        bytes32 memoHash,
+        address payer,
+        bytes20 pkh,
+        uint    amount,
+        uint    timestamp
     ) external {
         Reward storage reward = rewards[blockHash][memoHash];
-        uint timestamp = reward.timestamp;
-        require(timestamp > 0, "!reward");  // !tx
+        require(reward.rank > 0, "!reward");  // !tx
+        require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, pkh, amount, timestamp))), "commitment mismatch");
         require(!_minable(timestamp), "too soon");
 
-        address miner = miners[reward.pkh];
+        address miner = miners[pkh];
         require(miner != address(0x0), "unregistered PKH");
-        // save a SLOAD here
-        address payer = memoHash == ENDURIO_MEMO_HASH ? address(0x0) : reward.payer;
-        IRefNet(address(this)).reward(miner, payer, reward.amount, memoHash, blockHash);
+        IRefNet(address(this)).reward(miner, payer, amount, memoHash, blockHash);
         delete rewards[blockHash][memoHash];
     }
 
@@ -248,33 +250,20 @@ contract PoR is DataStructure, IERC20Events {
         reward.rank = rank;
         }
 
-        { // stack too deep
-        uint96 timestamp = params.header.extractTimestamp();
-        require(_minable(timestamp), "mining time over");
-        reward.timestamp = timestamp;
-
-        if (bounty.length > 1) {
-            require(timestamp - bounty[0].header.extractTimestamp() <= BOUNTY_TIME, "bounty: block too old");
-        }
-        }
-
-        // for both new and replacing winner
-        reward.amount = _getBrandReward(memoHash, params.payer, rewardRate);
-        reward.payer = params.payer;
-
+        bytes20 pkh;
         { // stack too deep
         // store the outpoint to claim the reward later
         bytes memory input = params.vin.extractInputAtIndex(params.inputIndex);
         
         if (params.pubkeyPos > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
-            reward.pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
+            pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
         } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
-            reward.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
+            pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
-            reward.pkh = _getPKH(input.slice(input.length-33-4, 33));
+            pkh = _getPKH(input.slice(input.length-33-4, 33));
         } else {
             // redeem script for P2WPKH
             require(outpoint.length > 0, "!outpoint");
@@ -282,9 +271,20 @@ contract PoR is DataStructure, IERC20Events {
             require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
             uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
             bytes memory output = outpoint[0].vout.extractOutputAtIndex(oIdx);
-            reward.pkh = _extractPKH(output, outpoint[0].pkhPos);
+            pkh = _extractPKH(output, outpoint[0].pkhPos);
         }
         }
+
+        uint timestamp = params.header.extractTimestamp();
+        require(_minable(timestamp), "mining time over");
+        if (bounty.length > 1) {
+            require(timestamp - bounty[0].header.extractTimestamp() <= BOUNTY_TIME, "bounty: block too old");
+        }
+
+        uint amount = _getBrandReward(memoHash, params.payer, rewardRate);
+
+        reward.commitment = bytes28(keccak256(abi.encodePacked(params.payer, pkh, amount, timestamp)));
+        emit Mined(memoHash, params.payer, pkh, amount, timestamp, bytes32(blockHash));
     }
 
     function _processMemo(

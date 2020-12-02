@@ -121,7 +121,7 @@ contract("PoR", accounts => {
         return expectRevert(promise, commitRevert);
       }
 
-      await promise;
+      const commitReceipt = await promise;
 
       await utils.timeToClaim(txHash)
       const txData = txs[txHash]
@@ -129,10 +129,10 @@ contract("PoR", accounts => {
       const key = keys.find(k => k.address == txData.miner)
       await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
       if (claimRevert) {
-        return expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
+        return expectRevert(utils.claim(commitReceipt), claimRevert);
       }
 
-      return expectEventClaim(utils.claim(txData, ENDURIO_HASH), txData.block, txData.miner, multiplier);
+      return expectEventClaim(utils.claim(commitReceipt), txData.block, txData.miner, multiplier);
     }
   })
 
@@ -174,12 +174,12 @@ contract("PoR", accounts => {
             return expectRevert(utils.commit(p, outpoint, bounty), commitRevert);
           }
           const ss = await snapshot.take();
-          await utils.commit(p, outpoint, bounty);
+          const commitReceipt = await utils.commit(p, outpoint, bounty);
           await utils.timeToClaim(txHash)
           if (claimRevert) {
-            await expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
+            await expectRevert(utils.claim(commitReceipt), claimRevert);
           } else {
-            await utils.claim(txData, ENDURIO_HASH);
+            await utils.claim(commitReceipt);
           }
           await snapshot.revert(ss);
         }
@@ -214,12 +214,12 @@ contract("PoR", accounts => {
             return expectRevert(utils.commit(params, outpoint, bounty), commitRevert);
           }
           const ss = await snapshot.take();
-          await utils.commit(params, outpoint, bounty);
+          const commitReceipt = await utils.commit(params, outpoint, bounty);
           await utils.timeToClaim(txHash)
           if (claimRevert) {
-            await expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
+            await expectRevert(utils.claim(commitReceipt), claimRevert);
           } else {
-            await utils.claim(txData, ENDURIO_HASH);
+            await utils.claim(commitReceipt);
           }
           await snapshot.revert(ss);
         }
@@ -238,6 +238,8 @@ contract("PoR", accounts => {
   })
 
   describe('sticky', () => {
+    const commitReceipts = {}
+
     it("commit txs", async() => {
       const commitTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
@@ -288,7 +290,7 @@ contract("PoR", accounts => {
           }
         }
 
-        await utils.commit(params, outpoint, bounty);
+        commitReceipts[txHash] = await utils.commit(params, outpoint, bounty);
       }
     })
 
@@ -326,6 +328,9 @@ contract("PoR", accounts => {
       const ownMinerTests = {}
 
       for (const txHash of commitTxs) {
+        const commitReceipt = commitReceipts[txHash]
+        expect(commitReceipt, 'should the transaction have a commit receipt').to.be.not.null
+
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
         const ownMiner = utils.addressCompare(txData.miner, sender.address) === 0; // we own the miner address
@@ -339,13 +344,13 @@ contract("PoR", accounts => {
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(utils.claim(txData, ENDURIO_HASH), block, DUMMY_ADDRESS);
+          await expectEventClaim(utils.claim(commitReceipt), block, DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
         // auto detect PKH position
-        await expectEventClaim(utils.claim(txData, ENDURIO_HASH), block, txData.miner);
-        await expectRevert(utils.claim(txData, ENDURIO_HASH), "!reward");
+        await expectEventClaim(utils.claim(commitReceipt), block, txData.miner);
+        await expectRevert(utils.claim(commitReceipt), "!reward");
       }
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;

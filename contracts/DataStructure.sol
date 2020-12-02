@@ -54,6 +54,14 @@ contract DataStructure {
         bytes32 indexed memoHash,
         address indexed payer
     );
+    event Mined(
+        bytes32 indexed memoHash,
+        address indexed payer,
+        bytes20 indexed pkh,
+        uint            amount,
+        uint            timestamp,
+        bytes32         blockHash
+    );
     event Rewarded(
         bytes32 indexed memoHash,
         address indexed payer,
@@ -148,14 +156,8 @@ struct Transaction {
     bytes32 bounty;
 }
 
-/// timestamp can be shared between many memoHash of the same block,
-/// but this will be changed to commitment later so let's keep it here
+// TODO: test whether this is tightly packed
 struct Reward {
     uint32  rank;
-    address payer;
-
-    uint    amount;
-
-    uint96  timestamp;  // TODO: test whether this is tightly packed
-    bytes20 pkh;
+    bytes28 commitment;     // keccak256(abi.encodePacked(payer, pkh, amount, timestamp))
 }
