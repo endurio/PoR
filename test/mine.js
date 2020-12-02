@@ -115,7 +115,7 @@ contract("PoR", accounts => {
         params.memoLength = memoLength;
       }
 
-      const promise = instPoR.commit(params, outpoint, bounty)
+      const promise = utils.commit(params, outpoint, bounty)
 
       if (commitRevert) {
         return expectRevert(promise, commitRevert);
@@ -171,10 +171,10 @@ contract("PoR", accounts => {
             pubkeyPos: params.pubkeyPos+pubkeyPosOffset,
           }
           if (commitRevert) {
-            return expectRevert(instPoR.commit(p, outpoint, bounty), commitRevert);
+            return expectRevert(utils.commit(p, outpoint, bounty), commitRevert);
           }
           const ss = await snapshot.take();
-          await instPoR.commit(p, outpoint, bounty);
+          await utils.commit(p, outpoint, bounty);
           await utils.timeToClaim(txHash)
           if (claimRevert) {
             await expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
@@ -211,10 +211,10 @@ contract("PoR", accounts => {
 
         async function mineTest({params, outpoint, bounty}, {commitRevert, claimRevert}) {
           if (commitRevert) {
-            return expectRevert(instPoR.commit(params, outpoint, bounty), commitRevert);
+            return expectRevert(utils.commit(params, outpoint, bounty), commitRevert);
           }
           const ss = await snapshot.take();
-          await instPoR.commit(params, outpoint, bounty);
+          await utils.commit(params, outpoint, bounty);
           await utils.timeToClaim(txHash)
           if (claimRevert) {
             await expectRevert(utils.claim(txData, ENDURIO_HASH), claimRevert);
@@ -232,7 +232,7 @@ contract("PoR", accounts => {
       ]
       for (const txHash of commitTxs) {
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
-        await expectRevert(instPoR.commit(params, outpoint, bounty), '!OP_RET');
+        await expectRevert(utils.commit(params, outpoint, bounty), '!OP_RET');
       }
     })
   })
@@ -255,14 +255,14 @@ contract("PoR", accounts => {
         const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
 
-        await expectRevert(instPoR.commit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
+        await expectRevert(utils.commit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
 
-        await expectRevert(instPoR.commit({...params, merkleProof: '0x'+params.merkleProof.slice(66)}, outpoint, bounty), 'invalid merkle proof');
+        await expectRevert(utils.commit({...params, merkleProof: '0x'+params.merkleProof.slice(66)}, outpoint, bounty), 'invalid merkle proof');
 
         { // snapshot scope
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
-          await instPoR.commit(params, outpoint, bounty);
+          await utils.commit(params, outpoint, bounty);
           await snapshot.revert(ss);
         }
 
@@ -270,14 +270,14 @@ contract("PoR", accounts => {
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60)
           await expectRevert(
-            instPoR.commit(params, outpoint, bounty),
+            utils.commit(params, outpoint, bounty),
             'mining time over',
           );
           await snapshot.revert(ss);
         }
 
         const tx = bitcoinjs.Transaction.fromHex(txData.hex)
-        const promise = instPoR.commit({...params, inputIndex: 1}, outpoint, bounty)
+        const promise = utils.commit({...params, inputIndex: 1}, outpoint, bounty)
         if (tx.ins.length == 1) {
           await expectRevert(promise, 'Vin read overrun')
         } else {
@@ -288,7 +288,7 @@ contract("PoR", accounts => {
           }
         }
 
-        await instPoR.commit(params, outpoint, bounty);
+        await utils.commit(params, outpoint, bounty);
       }
     })
 

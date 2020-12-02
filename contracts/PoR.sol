@@ -270,17 +270,15 @@ contract PoR is DataStructure, IERC20Events {
         if (params.pubkeyPos > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
             reward.pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
-            require(outpoint.length == 0, "redundant outpoint for P2SH");               // DEBUG ONLY
         } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
             reward.pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
-            require(outpoint.length == 0, "redundant outpoint for P2SH-P2WPKH");        // DEBUG ONLY
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
             reward.pkh = _getPKH(input.slice(input.length-33-4, 33));
-            require(outpoint.length == 0, "redundant outpoint for P2PKH");              // DEBUG ONLY
         } else {
             // redeem script for P2WPKH
+            require(outpoint.length > 0, "!outpoint");
             bytes32 otxid = ValidateSPV.calculateTxId(outpoint[0].version, outpoint[0].vin, outpoint[0].vout, outpoint[0].locktime);
             require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
             uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);

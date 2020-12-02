@@ -4,7 +4,7 @@ const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
 const { blocks, txs } = require('../data/por');
 const { decShift } = require('../../tools/lib/big');
-const { time } = require('@openzeppelin/test-helpers');
+const { time, expectRevert } = require('@openzeppelin/test-helpers');
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -45,6 +45,14 @@ module.exports = {
 
   commitTx(txHash, payer, brand) {
     const {params, outpoint, bounty} = this.prepareCommit({txHash, brand, payer});
+    return this.commit(params, outpoint, bounty)
+  },
+
+  commit(params, outpoint, bounty) {
+    if (outpoint.length > 0) {
+      return expectRevert(instPoR.commit(params, [], bounty), '!outpoint')
+        .then(() => instPoR.commit(params, outpoint, bounty))
+    }
     return instPoR.commit(params, outpoint, bounty)
   },
 
