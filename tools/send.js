@@ -4,7 +4,6 @@ const { btcUtils } = require('./lib/btcUtils');
 const { decShift } = require('./lib/big');
 const Btc = require('bitcoinjs-lib');
 const prompt = require('prompt');
-const utils = require('../test/lib/utils');
 
 const Web3 = require('web3')
 const web3 = new Web3()
@@ -14,7 +13,12 @@ const argv = yargs
     .option('nouts', {
         alias: 'n',
         description: 'Number of bounty outputs',
-        type: 'Number',
+        type: 'number',
+    })
+    .option('nto', {
+        alias: 't',
+        description: 'Number of non-bounty outputs',
+        type: 'number',
     })
     .argv;
 
@@ -76,6 +80,19 @@ async function doIt() {
     const network = btcUtils.getNetwork(symbol)
     const psbt = new Btc.Psbt({network});
 
+    let outValue = 0
+    if (argv.nto) {
+        const value = parseInt(decShift(input.amount/2/argv.nto, 8))
+        console.log(`add ${argv.nto} outputs with ${value} sats`)
+        for (let i = 0; i < argv.nto; ++i) {
+            psbt.addOutput({
+                address: sender,
+                value,
+            })
+            outValue += value
+        }
+    }
+
     console.log('add the memo output')
     const data = Buffer.from(memo, 'utf8')
     const dataScript = Btc.payments.embed({data:[data]})
@@ -85,7 +102,7 @@ async function doIt() {
     })
 
     console.log('build the mining outputs and required inputs')
-    await build(psbt, inputs, recipients, sender)
+    await build(psbt, inputs, recipients, sender, outValue)
 
     const tx = psbt.extractTransaction()
 
@@ -105,9 +122,8 @@ async function doIt() {
     });
 }
 
-async function build(psbt, inputs, recipients, sender) {
+async function build(psbt, inputs, recipients, sender, outValue = 0) {
     let inValue = 0
-    let outValue = 0
 
     async function buildWithoutChange(psbt) {
         let recIdx = 0
