@@ -1,4 +1,5 @@
 const _ = require('lodash');
+const yargs = require('yargs');
 const { btcUtils } = require('./lib/btcUtils');
 const { decShift } = require('./lib/big');
 const Btc = require('bitcoinjs-lib');
@@ -8,6 +9,14 @@ const utils = require('../test/lib/utils');
 const Web3 = require('web3')
 const web3 = new Web3()
 const BN = web3.utils.BN
+
+const argv = yargs
+    .option('nouts', {
+        alias: 'n',
+        description: 'Number of bounty outputs',
+        type: 'Number',
+    })
+    .argv;
 
 const accUTALegacy = 'mvxJQTPXkF2ERXKnK5ovnrq7XZFuKmQCKY'
 const accUTASegwit = 'tb1q49239d5pwn63cqhmnnfgu8z6ndzah7dycgcfql'
@@ -162,7 +171,7 @@ async function searchForInput(utxos, maxBlocks = 6) {
     utxos.forEach(utxo => {
         utxo.recipients = []
     })
-    const nBounty = 2 + Math.floor(Math.random() * (MaxOutput-2))
+    const nBounty = argv.n || MaxOutput
     console.log(`search for the best UTXO for ${nBounty} outputs`)
     for (let n = info.blocks; n > info.blocks-maxBlocks; --n) {
         const block = await btcUtils.requestCryptoAPI(symbol, `blocks/${n}`)

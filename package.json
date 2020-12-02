@@ -20,7 +20,8 @@
     "@openzeppelin/contracts": "^3.1.0",
     "truffle": "^5.1.31",
     "tslint": "^5.11.0",
-    "web3": "1.0.0-beta.36"
+    "web3": "1.0.0-beta.36",
+    "yargs": "^16.1.1"
   },
   "devDependencies": {
     "@openzeppelin/test-helpers": "^0.5.6",
