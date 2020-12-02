@@ -326,6 +326,7 @@ contract("PoR", accounts => {
         '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
       const ownMinerTests = {}
+      let tooSoonTestsCount = 0
 
       for (const txHash of commitTxs) {
         const commitReceipt = commitReceipts[txHash]
@@ -338,7 +339,9 @@ contract("PoR", accounts => {
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
-          await time.increaseTo(targetTimestamp);
+          await expectRevert(utils.claim(commitReceipt), "too soon");
+          ++tooSoonTestsCount
+          await utils.timeToClaim(txHash);
         }
 
         if (ownMiner) {
@@ -364,6 +367,7 @@ contract("PoR", accounts => {
 
       expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
       expect(ownMinerTests[false], "should test data cover non-miner case").to.be.true;
+      expect(tooSoonTestsCount).to.be.gt(0, "should test data cover `too soon` case");
     })
 
   })
