@@ -377,18 +377,10 @@ library BTCUtils {
 
         (_varIntDataLen, _nOuts) = parseVarInt(_vout);
         require(_varIntDataLen != ERR_BAD_ARG, "Read overrun during VarInt parsing");
-        if (_nOuts <= _index) {
-            if (-_index < _nOuts) {
-                _index += _nOuts;
-            } else {
-                revert("Vout read overrun");
-            }
+        if (_index >= _nOuts) {
+            _index += _nOuts;
         }
-        if (_index > 0 && _nOuts > -_index) {
-            _index = _nOuts + _index;
-        } else {
-            require(_index < _nOuts, "Vout read overrun");
-        }
+        require(_index < _nOuts, "Vout read overrun");
 
         bytes memory _remaining;
 
