@@ -96,6 +96,7 @@ contract("PoR: Bounty Mining", accounts => {
         'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17': undefined,
         'b32e72a5eb6c60d6b640e01749b459df83838b987e16fe594c0bdaba7668f7dd': 'bounty: dust output',
         '8fc78e141b1e3ce488d4d06f387f4fb8a78f87b9b3949d7bfe2fb70d9a984444': undefined,
+        '2c0c3efedd5491d96b07928d8d9e4a2a7be4aa2645e13e7bcc2325fc67675b45': 'bounty: too many recipients',
       }
 
       for (const txHash of Object.keys(commitTxs)) {
