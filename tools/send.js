@@ -201,6 +201,9 @@ async function searchForInput(utxos, maxBlocks = 6) {
                 }
                 // check for OP_RET in recipient tx
                 const tx = await btcUtils.requestCryptoAPI(symbol, `txs/txid/${recipient}`)
+                if (tx.index == 0) {
+                    continue    // skip the coinbase tx
+                }
                 const hasOpRet = tx.txouts.some(o => o.script.hex.startsWith('6a'))   // OP_RET = 0x6a
                 if (hasOpRet) {
                     continue
