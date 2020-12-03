@@ -4,11 +4,13 @@ const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
 const { time, expectRevert, expectEvent, BN } = require('@openzeppelin/test-helpers');
 const snapshot = require('./lib/snapshot');
-const { keys, blocks, txs } = require('./data/por');
 const utils = require('./lib/utils');
 const { decShift } = require('../tools/lib/big');
 const Web3 = require('web3')
 const web3 = new Web3()
+
+const { keys, txs } = require('./data/por');
+const blocks = utils.loadBlockData()
 
 const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");

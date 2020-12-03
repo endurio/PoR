@@ -2,9 +2,20 @@ const _ = require('lodash');
 const hash256 = require('../vendor/hash256');
 const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
-const { blocks, txs } = require('../data/por');
 const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
+
+const { txs } = require('../data/por');
+
+function loadBlockData() {
+  const blocks = {}
+  const fs = require('fs');
+  fs.readdirSync('./test/data/blocks').forEach(blockHash => {
+    blocks[blockHash] = fs.readFileSync('./test/data/blocks/'+blockHash).toString()
+  });
+  return blocks
+}
+const blocks = loadBlockData()
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -41,6 +52,10 @@ module.exports = {
     const PoR = artifacts.require("PoR");
     inst = await ENDR.deployed();
     instPoR = await PoR.at(inst.address);
+  },
+
+  loadBlockData() {
+    return loadBlockData()
   },
 
   commitTx(txHash, payer, brand) {
