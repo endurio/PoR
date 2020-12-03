@@ -428,8 +428,8 @@ library BTCUtils {
         uint minTxSize,     // firstInputSize
         uint samplingSeed
     ) internal pure returns (
-        // bytes memory opret,
-        uint nOuts
+        bytes memory opret,
+        uint nBounty
     ) {
         // version(4) + nVins(1) + input + nVouts(1) + output + locktime(4)
         minTxSize += 10;
@@ -438,12 +438,10 @@ library BTCUtils {
 
         uint minValue = uint(-1);   // max value
 
-        uint _len;
-        (_len, nOuts) = parseVarInt(_vout);
+        (uint _len, uint nOuts) = parseVarInt(_vout);
         require(_len != ERR_BAD_ARG, "Read overrun during VarInt parsing");
 
         require(nOuts > 2, "bounty: not enough outputs");
-        samplingSeed = samplingSeed % (nOuts-2) + 1; // reused as bountyIdx
 
         ++_len;
 
@@ -451,13 +449,17 @@ library BTCUtils {
             _vout = _vout.slice(_len, _vout.length - _len);
             _len = determineOutputLength(_vout);
             require(_len != ERR_BAD_ARG, "Bad VarInt in scriptPubkey");
-            if (_i == 0) {
-                // // the first output must be OP_RETURN
-                // require(_vout[9] == 0x6a, "bounty: 1st output != OP_RET");
-                // opret = _vout.slice(11, uint8(_vout[10]));
+            uint value = uint(extractValue(_vout));
+            fee -= value;   // unsafe
+            if (nBounty == 0) {
+                // search for the first OP_RET
+                if (_vout[9] == 0x6a) {
+                    nBounty = nOuts - 2 -_i;
+                    require(nBounty <= 8, "bounty: too many recipients");
+                    samplingSeed = samplingSeed % nBounty + _i+1; // reused as bountyIdx
+                    opret = _vout.slice(11, uint8(_vout[10]));
+                }
             } else {
-                uint value = uint(extractValue(_vout));
-                fee -= value;   // unsafe
                 if (_i < nOuts-1) { // exclude the last output (coin change) from minValue
                     if (value < minValue) {
                         minValue = value;
@@ -472,10 +474,6 @@ library BTCUtils {
 
         // fee = CapMath.scaleDown(fee, firstInputSize, txSize);
         require(fee * minTxSize <= minValue * txSize, "bounty: dust output");  // unsave
-
-        // return total number of bounty outputs
-        nOuts -= 2;
-        require(nOuts <= 8, "bounty: too many recipients");
     }
 
     function extractScript(bytes memory _output) internal pure returns (bytes memory) {

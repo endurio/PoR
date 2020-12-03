@@ -92,6 +92,13 @@ module.exports = {
     return memo
   },
 
+  countBounty(txHash) {
+    const txData = txs[txHash];
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+    const memoIdx = findMemoIndex(tx.outs)
+    return tx.outs.length - memoIdx - 2;
+  },
+
   prepareCommit(txParams, outpointParams) {
     const params = this._prepareCommitTx(txParams)
     if (params.pubkeyPos) {
@@ -230,13 +237,18 @@ module.exports = {
     return a
   },
 
-  getExpectedReward(block, rate = 1) {
+  getExpectedReward(block, rate = 1, nBounty) {
     if (_.isString(block)) {
       block = bitcoinjs.Block.fromHex(blocks[block]);
     }
     const MAX_TARGET = 1n<<240n;
     const target = this.bitsToTarget(block.bits)
-    return MAX_TARGET / target * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18));
+    let reward = MAX_TARGET
+    if (nBounty) {
+      reward *= BigInt(nBounty*2)
+    }
+    reward /= target
+    return reward * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18))
   },
 
   bitsToTarget(bits) {
@@ -271,10 +283,6 @@ function findMemoIndex(outs) {
     }
   }
   return -1
-}
-
-function hasBounty(outs) {
-  return findMemoIndex(outs) + 2 < outs.length
 }
 
 function getMerkleProof(block, txid) {

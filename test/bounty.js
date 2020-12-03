@@ -28,7 +28,7 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const RecipientRate = 32;
 
-contract("PoR: Bounty Hunter", accounts => {
+contract("PoR: Bounty Mining", accounts => {
   expect(accounts[0]).to.equal(keys[0].address, 'should the first keys data is the sender account');
   const sender = keys[0];
 
@@ -78,63 +78,102 @@ contract("PoR: Bounty Hunter", accounts => {
       await time.increaseTo(block.timestamp)
     })
 
+    const payRate = 0.001;
+
     it("activate new brand 'foobar'", async() => {
       const fund = 200000000000;
-      const payRate = 0.01;
       await instBM.activate(FOOBAR, fund, decShift(payRate, 18), 0)
     })
 
-    it("mine the txs", async() => {
-      const payRate = 0.01;
+    it("bad bounty", async() => {
       const payer = sender.address;
 
       const commitTxs = [
-        // 'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09',
+        'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09',
         '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2',
       ]
 
       for (const txHash of commitTxs) {
-        const memo = utils.guessMemo(txHash)
-        const memoHash = web3.utils.keccak256(Buffer.from(memo))
-
-        const commitReceipt = await utils.commitTx(txHash, payer)
-        await utils.timeToClaim(txHash)
-
+        const brand = utils.guessMemo(txHash)
+        const memoHash = web3.utils.keccak256(Buffer.from(brand))
         const txData = txs[txHash]
+        const reward = utils.getExpectedReward(txData.block, payRate)
+
         const miner = keys.find(k => k.address == txData.miner)
+        const recipient = miner.address
         await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
 
-        await utils.claim(commitReceipt)
+        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
 
-        // const samplingOutputIdx = new BN(blockHash, 16).mod(new BN(tx.outs.length-2)).toNumber() + 1;
-        // console.error(samplingOutputIdx)
-        // console.error(tx.outs[samplingOutputIdx].script.toString('hex'))
-        // const network = bitcoinjs.networks.testnet
-        // console.error(bitcoinjs.address.fromOutputScript(tx.outs[samplingOutputIdx].script, network))
+        // commit with bounty
+        await expectRevert(utils.commit(params, outpoint, bounty), 'unacceptable recipient')
 
-        continue
-        const recipient = miner.address
+        // commit without bounty
+        const commitReceipt = await utils.commit(params, outpoint, [])
+        await utils.timeToClaim(txHash)
+        expectEventClaim(await utils.claim(commitReceipt), recipient, reward, payer, memoHash)
+      }
+    })
+
+    it("good bounty", async() => {
+      const payer = sender.address;
+
+      const commitTxs = [
+        'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17',
+      ]
+
+      for (const txHash of commitTxs) {
+        const nBounty = utils.countBounty(txHash)
+        const brand = utils.guessMemo(txHash)
+        const memoHash = web3.utils.keccak256(Buffer.from(brand))
+        const txData = txs[txHash]
+        const rewardWithBounty = utils.getExpectedReward(txData.block, payRate, nBounty)
         const reward = utils.getExpectedReward(txData.block, payRate)
-        const commission = reward / BigInt(2);
-        expectEvent(receipt, 'CommissionLost', {
-          payer,
-          miner: recipient,
-          value: commission.toString(),
-        });
-        expectEvent(receipt, 'Transfer', {
-          from: inst.address,
-          to: recipient,
-          value: reward.toString(),
-        });
-        expectEvent(receipt, 'Reward', {
-          memoHash: FOOBAR_HASH,
-          payer,
-          miner: recipient,
-          value: reward.toString(),
-        });
+
+        const miner = keys.find(k => k.address == txData.miner)
+        const recipient = miner.address
+        await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
+       
+        expect(reward.toString()).equal((rewardWithBounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
+
+        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
+
+        { // snapshot scope
+          const ss = await snapshot.take();
+          // commit without bounty
+          const commitReceipt = await utils.commit(params, outpoint, [])
+          await utils.timeToClaim(txHash)
+          expectEventClaim(await utils.claim(commitReceipt), recipient, reward, payer, memoHash)
+          await snapshot.revert(ss);
+        }
+
+        // commit with bounty
+        const commitReceipt = await utils.commit(params, outpoint, bounty)
+        await utils.timeToClaim(txHash)
+        expectEventClaim(await utils.claim(commitReceipt), recipient, rewardWithBounty, payer, memoHash)
       }
     })
   })
+
+  function expectEventClaim(receipt, recipient, reward, payer, memoHash) {
+    const commission = reward / BigInt(2);
+    expectEvent(receipt, 'CommissionLost', {
+      payer,
+      miner: recipient,
+      value: commission.toString(),
+    });
+    expectEvent(receipt, 'Transfer', {
+      from: inst.address,
+      to: recipient,
+      value: reward.toString(),
+    });
+    expectEvent(receipt, 'Rewarded', {
+      memoHash,
+      payer,
+      miner: recipient,
+      value: reward.toString(),
+    });
+  }
 
   async function mineSomeCoin() {
     const {miner} = await mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')

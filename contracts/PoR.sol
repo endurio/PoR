@@ -123,7 +123,8 @@ contract PoR is DataStructure, IERC20Events {
     ) external {
         // block
         uint blockHash = uint(params.header.hash256()).reverseUint256(); // always use BE for block hash
-        uint rewardRate = MAX_TARGET;
+        uint rewardRate;
+        bytes memory opret;
 
         if (bounty.length > 0) {
             require(bounty[0].vout.extractFirstOpReturn().length == 0, "bounty: sampling recipient has OP_RET");
@@ -146,23 +147,27 @@ contract PoR is DataStructure, IERC20Events {
                 inValue += bounty[0].inputs[i].vout.extractOutputAtIndex(outpointIdx[i]).extractValue(); // unsafe
             }
 
-            bytes32 sid = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
-            // TODO: change the way recipient is seleced to remove this reverseEndianness
-            require(uint(keccak256(abi.encodePacked(sid, outpointHash[0]).reverseEndianness())) % RECIPIENT_RATE == 0, "bounty: unacceptable recipient");
+            bytes32 recipient = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
+            require(uint(keccak256(abi.encodePacked(outpointHash[0], recipient))) % RECIPIENT_RATE == 0, "bounty: unacceptable recipient");
             require(ValidateSPV.prove(
-                sid,
+                recipient,
                 bounty[0].header.extractMerkleRootLE().toBytes32(),
                 bounty[0].merkleProof,
                 bounty[0].merkleIndex
             ), "bounty: invalid merkle proof");
             }
 
-            rewardRate *= 2 * params.vout.processBountyOutputs(
+            (opret, rewardRate) = params.vout.processBountyOutputs(
                 params.vin.length,
                 keccak256(bounty[0].vout.extractOutputAtIndex(uint(-1)).extractScript()),
                 inValue,
                 firstInputSize,
                 blockHash);
+
+            rewardRate *= 2 * MAX_TARGET;   // overflowable: unexploitable
+        } else {
+            opret = params.vout.extractFirstOpReturn();
+            rewardRate = MAX_TARGET;
         }
 
         bytes32 memoHash;
@@ -185,7 +190,7 @@ contract PoR is DataStructure, IERC20Events {
         }
 
         uint multiplier;
-        (memoHash, multiplier) = _processMemo(params.vout.extractFirstOpReturn(), params.memoLength);
+        (memoHash, multiplier) = _processMemo(opret, params.memoLength);
         if (multiplier > 1) {
             target /= multiplier;
         }
