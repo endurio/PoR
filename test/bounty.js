@@ -143,6 +143,18 @@ contract("PoR: Bounty Mining", accounts => {
           header: bounty[0].header.substring(0,bounty[0].header.length-8) + '00000000',  // clear the 4-bytes nonce
         }]), 'bounty: insufficient work')
 
+        // commit with bad merkle index
+        await expectRevert(utils.commit(params, outpoint, [{
+          ...bounty[0],
+          merkleIndex: bounty[0].merkleIndex+1,
+        }]), 'bounty: invalid merkle proof')
+
+        // commit with bad merkle proof
+        await expectRevert(utils.commit(params, outpoint, [{
+          ...bounty[0],
+          merkleProof: bounty[0].merkleProof.substring(0, bounty[0].merkleProof.length-2) + '00', // clear the last byte of the proof
+        }]), 'bounty: invalid merkle proof')
+        
         // commit with bounty
         const commitReceipt = await utils.commit(params, outpoint, bounty)
         await utils.timeToClaim(txHash)
