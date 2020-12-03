@@ -467,6 +467,8 @@ library BTCUtils {
                     if (_i == samplingSeed) { // bounty output cannot be the last output (coin change)
                         require(bountyScriptKeccak == keccak256(extractScript(_vout)), 'bounty: sampling script mismatch');
                         minTxSize += _len; // minTxSize += bountyOutputSize
+                    } else {
+                        require(bountyScriptKeccak != keccak256(extractScript(_vout)), 'bounty: duplicate recipient');
                     }
                 }
             }
