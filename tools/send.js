@@ -47,7 +47,7 @@ const FEE_RATE = {
 }
 
 const BOUNTY = {
-    'BTC-TEST': 613,
+    'BTC-TEST': 999,
 }
 
 const FEE = {
