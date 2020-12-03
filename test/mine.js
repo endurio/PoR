@@ -292,6 +292,13 @@ contract("PoR", accounts => {
           }
         }
 
+        // commit with bad header
+        await expectRevert(utils.commit({
+          ...params,
+          header: params.header.substring(0,params.header.length-8) + '00000000',  // clear the 4-bytes nonce
+        }, outpoint, bounty), 'insufficient work')
+
+        // correct data
         commitReceipts[txHash] = await utils.commit(params, outpoint, bounty);
       }
     })
