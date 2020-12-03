@@ -139,6 +139,7 @@ async function build(psbt, inputs, recipients, sender, outValue = 0) {
             inValue += parseInt(decShift(input.amount, 8))
 
             while (recIdx < recipients.length) {
+                // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
                 const rec = recipients[recIdx]
                 const output = rec.txouts[rec.txouts.length-1]
                 const amount = BOUNTY[symbol] // TODO: calculate this
@@ -208,6 +209,7 @@ async function searchForInput(utxos, maxBlocks = 6) {
                 if (hasOpRet) {
                     continue
                 }
+                // TODO: check and skip existing address/script
                 utxo.recipients.push(tx)
                 if (utxo.recipients.length >= nBounty) {
                     console.log(`found the first UTXO with enough ${nBounty} bounty outputs`)
