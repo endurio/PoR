@@ -100,6 +100,7 @@ contract("PoR: Bounty Mining", accounts => {
         '6a2652dbf94de4fd2bdfea0e3faf600683cfed30240e6acf0f281600e665ca3f': 'bounty: duplicate recipient',
         'f648fc11f34150ce9841f1ad7cd22a7cf6ee394f1787d055d5a90c509d5213cc': 'bounty: duplicate recipient',
         'a53fe9e6a9d7dcc4cda86af4d12e6632dd6f762abc084d21ba3b850e2a918ea2': 'bounty: sampling recipient has OP_RET',
+        '4ba472143eee31c4b0557682ee6f025c52fcaea8c5eac735be237021fd9f2724': 'bounty: dust output',
       }
 
       for (const txHash of Object.keys(commitTxs)) {
