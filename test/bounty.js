@@ -87,44 +87,21 @@ contract("PoR: Bounty Mining", accounts => {
       await instBM.activate(FOOBAR, fund, decShift(payRate, 18), 0)
     })
 
-    it("bad bounty", async() => {
+    it("bounty mining", async() => {
       const payer = sender.address;
 
-      const commitTxs = [
-        'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09',
-        '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2',
-      ]
-
-      for (const txHash of commitTxs) {
-        const brand = utils.guessMemo(txHash)
-        const memoHash = web3.utils.keccak256(Buffer.from(brand))
-        const txData = txs[txHash]
-        const reward = utils.getExpectedReward(txData.block, payRate)
-
-        const miner = keys.find(k => k.address == txData.miner)
-        const recipient = miner.address
-        await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
-
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
-
-        // commit with bounty
-        await expectRevert(utils.commit(params, outpoint, bounty), 'unacceptable recipient')
-
-        // commit without bounty
-        const commitReceipt = await utils.commit(params, outpoint, [])
-        await utils.timeToClaim(txHash)
-        expectEventClaim(await utils.claim(commitReceipt), recipient, reward, payer, memoHash)
+      const commitTxs = {
+        'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09': 'bounty: unacceptable recipient',
+        '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2': 'bounty: unacceptable recipient',
+        'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17': undefined,
+        'b32e72a5eb6c60d6b640e01749b459df83838b987e16fe594c0bdaba7668f7dd': 'bounty: dust output',
+        '8fc78e141b1e3ce488d4d06f387f4fb8a78f87b9b3949d7bfe2fb70d9a984444': undefined,
       }
-    })
 
-    it("good bounty", async() => {
-      const payer = sender.address;
+      for (const txHash of Object.keys(commitTxs)) {
+        const reason = commitTxs[txHash]
+        console.log('          + ' + (reason || 'success'))
 
-      const commitTxs = [
-        'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17',
-      ]
-
-      for (const txHash of commitTxs) {
         const nBounty = utils.countBounty(txHash)
         const brand = utils.guessMemo(txHash)
         const memoHash = web3.utils.keccak256(Buffer.from(brand))
@@ -135,7 +112,7 @@ contract("PoR: Bounty Mining", accounts => {
         const miner = keys.find(k => k.address == txData.miner)
         const recipient = miner.address
         await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
-       
+
         expect(reward.toString()).equal((rewardWithBounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
 
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
@@ -150,9 +127,13 @@ contract("PoR: Bounty Mining", accounts => {
         }
 
         // commit with bounty
-        const commitReceipt = await utils.commit(params, outpoint, bounty)
-        await utils.timeToClaim(txHash)
-        expectEventClaim(await utils.claim(commitReceipt), recipient, rewardWithBounty, payer, memoHash)
+        if (reason) {
+          await expectRevert(utils.commit(params, outpoint, bounty), reason)
+        } else {
+          const commitReceipt = await utils.commit(params, outpoint, bounty)
+          await utils.timeToClaim(txHash)
+          expectEventClaim(await utils.claim(commitReceipt), recipient, rewardWithBounty, payer, memoHash)
+        }
       }
     })
   })
