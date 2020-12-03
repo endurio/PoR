@@ -184,7 +184,7 @@ contract PoR is DataStructure, IERC20Events {
             // A single (BTC) retarget never changes the target by more than a factor of 4 either way to prevent large changes in difficulty.
             // To support more re-targeting protocols and testnet, we limit to factor of 2 upward before triggering an expensive reward retarget.
             bountyTarget /= target;
-            if (target >= 2) { // bounty reference block target is too week
+            if (bountyTarget >= 2) { // bounty reference block target is too week
                 rewardRate /= bountyTarget;
             }
         }

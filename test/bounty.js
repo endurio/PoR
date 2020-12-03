@@ -132,14 +132,21 @@ contract("PoR: Bounty Mining", accounts => {
           await snapshot.revert(ss);
         }
 
-        // commit with bounty
         if (reason) {
           await expectRevert(utils.commit(params, outpoint, bounty), reason)
-        } else {
-          const commitReceipt = await utils.commit(params, outpoint, bounty)
-          await utils.timeToClaim(txHash)
-          expectEventClaim(await utils.claim(commitReceipt), recipient, rewardWithBounty, payer, memoHash)
+          continue
         }
+
+        // commit with bad bounty block header
+        await expectRevert(utils.commit(params, outpoint, [{
+          ...bounty[0],
+          header: bounty[0].header.substring(0,bounty[0].header.length-8) + '00000000',  // clear the 4-bytes nonce
+        }]), 'bounty: insufficient work')
+
+        // commit with bounty
+        const commitReceipt = await utils.commit(params, outpoint, bounty)
+        await utils.timeToClaim(txHash)
+        expectEventClaim(await utils.claim(commitReceipt), recipient, rewardWithBounty, payer, memoHash)
       }
     })
   })
