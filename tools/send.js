@@ -60,7 +60,7 @@ async function doIt() {
     const utxos = await btcUtils.getUnspentTxs(symbol, sender)
     console.log('search for best input')
     const input = await searchForInput(utxos)
-    console.log('found best input')
+    console.log('found best input', input)
     if (!input.recipients || input.recipients.length === 0) {
         throw 'no eligible recipient'
     }
@@ -207,7 +207,7 @@ async function searchForInput(utxos, maxBlocks = 6) {
                 }
                 utxo.recipients.push(tx)
                 if (utxo.recipients.length >= nBounty) {
-                    console.log(`found the first UTXO with enough ${nBounty} bounty outputs`, utxo)
+                    console.log(`found the first UTXO with enough ${nBounty} bounty outputs`)
                     return utxo
                 }
             }
