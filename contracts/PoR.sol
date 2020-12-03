@@ -175,7 +175,7 @@ contract PoR is DataStructure, IERC20Events {
         { // stack too deep
         uint target = params.header.extractTarget();
 
-        if (bounty.length > 1) {
+        if (bounty.length > 0) {
             uint bountyTarget = bounty[0].header.extractTarget();
             // Require that the header has sufficient work
             require(uint(bounty[0].header.hash256()).reverseUint256() <= bountyTarget, "bounty: insufficient work");
@@ -241,7 +241,7 @@ contract PoR is DataStructure, IERC20Events {
 
         uint timestamp = params.header.extractTimestamp();
         require(_minable(timestamp), "mining time over");
-        if (bounty.length > 1) {
+        if (bounty.length > 0) {
             require(timestamp - bounty[0].header.extractTimestamp() <= BOUNTY_TIME, "bounty: block too old");
         }
 
