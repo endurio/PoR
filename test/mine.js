@@ -134,7 +134,7 @@ contract("PoR", accounts => {
         return expectRevert(utils.claim(commitReceipt), claimRevert);
       }
 
-      return expectEventClaim(utils.claim(commitReceipt), txData.block, txData.miner, multiplier);
+      return expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
     }
   })
 
@@ -356,7 +356,7 @@ contract("PoR", accounts => {
         if (ownMiner) {
           const ss = await snapshot.take();
           await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(utils.claim(commitReceipt), block, DUMMY_ADDRESS);
+          await expectEventClaim(utils.claim(commitReceipt), txHash, DUMMY_ADDRESS);
           await snapshot.revert(ss);
         }
 
@@ -368,7 +368,7 @@ contract("PoR", accounts => {
         await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, mined.pkh, mined.amount, mined.timestamp), "commitment mismatch");
 
         // honest claim
-        await expectEventClaim(utils.claim(commitReceipt), block, txData.miner);
+        await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner);
 
         // double claim
         await expectRevert(utils.claim(commitReceipt), "commitment mismatch");
@@ -382,8 +382,8 @@ contract("PoR", accounts => {
   })
 })
 
-async function expectEventClaim(call, block, miner, multiplier) {
-  let reward = utils.getExpectedReward(block, multiplier);
+async function expectEventClaim(call, txHash, miner, multiplier) {
+  let reward = utils.getExpectedReward(txHash, multiplier).base;
   const commission = reward / BigInt(2);
 
   const receipt = await call;

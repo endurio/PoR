@@ -252,18 +252,32 @@ module.exports = {
     return a
   },
 
-  getExpectedReward(block, rate = 1, nBounty) {
-    if (_.isString(block)) {
-      block = bitcoinjs.Block.fromHex(blocks[block]);
-    }
+  getExpectedReward(txHash, rate = 1) {
+    const txData = txs[txHash]
+    const block = bitcoinjs.Block.fromHex(blocks[txData.block])
+
     const MAX_TARGET = 1n<<240n;
     const target = this.bitsToTarget(block.bits)
-    let reward = MAX_TARGET
-    if (nBounty) {
-      reward *= BigInt(nBounty*2)
+    const base = (MAX_TARGET / target) * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18))
+
+    if (txData.bounty) {
+      var nBounty = this.countBounty(txHash)
+      var bounty = MAX_TARGET * BigInt(nBounty*2) / target
+
+      // retargeting
+      const bountyBlock = bitcoinjs.Block.fromHex(blocks[txs[txData.bounty].block])
+      const bountyTarget = this.bitsToTarget(bountyBlock.bits)
+      const targetRate = bountyTarget / target
+      if (targetRate >= 2n) {
+        var retarget = targetRate
+        bounty /= retarget
+      }
+
+      // apply rate
+      bounty = bounty * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18))
     }
-    reward /= target
-    return reward * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18))
+
+    return {base, nBounty, bounty, retarget}
   },
 
   bitsToTarget(bits) {

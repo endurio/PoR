@@ -5,7 +5,7 @@ const { expect } = require('chai');
 const { time, expectRevert, expectEvent, BN } = require('@openzeppelin/test-helpers');
 const snapshot = require('./lib/snapshot');
 const utils = require('./lib/utils');
-const { decShift } = require('../tools/lib/big');
+const { decShift, thousands } = require('../tools/lib/big');
 const Web3 = require('web3')
 const web3 = new Web3()
 
@@ -103,24 +103,31 @@ contract("PoR: Bounty Mining", accounts => {
         '4ba472143eee31c4b0557682ee6f025c52fcaea8c5eac735be237021fd9f2724': 'bounty: dust output',
         'e4957541a90d54d0b8d8e8262fbc4f33df8f490e524f9a240b34538346032410': 'bounty: block too old',
         '1bd88cab82b0f38e086d63142a7d00dfa35d15273054ccd887e796e44d53093c': undefined,
+        'e7b9d9c81d0f5c2e15619dcfacccf9f961acdae549d58ef26b49574c7d041611': undefined,
       }
 
       for (const txHash of Object.keys(commitTxs)) {
         const reason = commitTxs[txHash]
-        console.log('          + ' + (reason || 'success'))
 
-        const nBounty = utils.countBounty(txHash)
         const brand = utils.guessMemo(txHash)
         const memoHash = web3.utils.keccak256(Buffer.from(brand))
         const txData = txs[txHash]
-        const rewardWithBounty = utils.getExpectedReward(txData.block, payRate, nBounty)
-        const reward = utils.getExpectedReward(txData.block, payRate)
+        const reward = utils.getExpectedReward(txHash, payRate)
 
         const miner = keys.find(k => k.address == txData.miner)
         const recipient = miner.address
         await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
 
-        expect(reward.toString()).equal((rewardWithBounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
+        const nBounty = utils.countBounty(txHash)
+        expect((reward.base/(reward.retarget||1n)).toString()).equal((reward.bounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
+        
+        if (reason) {
+          console.log('          - ' + reason)
+        } else {
+          console.log(`          + ${thousands(reward.base)} * 2x${reward.nBounty}` +
+            (reward.retarget ? ` / ${thousands(reward.retarget)}` : '') +
+            ` = ${thousands(reward.bounty)}`)
+        }
 
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
 
@@ -129,7 +136,7 @@ contract("PoR: Bounty Mining", accounts => {
           // commit without bounty
           const commitReceipt = await utils.commit(params, outpoint, [])
           await utils.timeToClaim(txHash)
-          expectEventClaim(await utils.claim(commitReceipt), recipient, reward, payer, memoHash)
+          expectEventClaim(await utils.claim(commitReceipt), recipient, reward.base, payer, memoHash)
           await snapshot.revert(ss);
         }
 
@@ -159,7 +166,7 @@ contract("PoR: Bounty Mining", accounts => {
         // commit with bounty
         const commitReceipt = await utils.commit(params, outpoint, bounty)
         await utils.timeToClaim(txHash)
-        expectEventClaim(await utils.claim(commitReceipt), recipient, rewardWithBounty, payer, memoHash)
+        expectEventClaim(await utils.claim(commitReceipt), recipient, reward.bounty, payer, memoHash)
       }
     })
   })
