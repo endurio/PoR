@@ -40,8 +40,7 @@ contract ENDR is DataStructure, ERC20 {
         impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
         impls[0xc1b9b511] = implPoR;    // claim
         impls[0xf5d936b0] = implPoR;    // commit
-        impls[0x495dd54b] = implPoR;    // registerMiner
-        impls[0x0aa0738f] = implPoR;    // changeMiner
+        impls[0xd5e34b10] = implPoR;    // registerPubKey
         impls[0x8129fc1c] = implRefNetwork;     // initialize
         impls[0x003ba1ed] = implRefNetwork;     // setRoot
         impls[0xb0296b18] = implRefNetwork;     // setGlobalConfig

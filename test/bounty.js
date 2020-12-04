@@ -114,9 +114,8 @@ contract("PoR: Bounty Mining", accounts => {
         const txData = txs[txHash]
         const reward = utils.getExpectedReward(txHash, payRate)
 
-        const miner = keys.find(k => k.address == txData.miner)
-        const recipient = miner.address
-        await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
+        await utils.registerPK(txData.miner)
+        const recipient = txData.miner
 
         const nBounty = utils.countBounty(txHash)
         expect((reward.base/(reward.retarget||1n)).toString()).equal((reward.bounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
@@ -201,7 +200,7 @@ contract("PoR: Bounty Mining", accounts => {
     await utils.timeToClaim(txHash)
     const txData = txs[txHash]
     const miner = keys.find(k => k.address == txData.miner)
-    await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
+    await instPoR.registerPubKey('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
     return {
       claimReceipt: utils.claim(commitReceipt),
       miner,

@@ -219,7 +219,7 @@ contract("BrandMarket", accounts => {
     await instPoR.commitTx('0x' + blockHash, '0x' + proofs, extra, '0x' + vin, '0x' + vout, brandPayer);
     await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
-    await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
+    await instPoR.registerPubKey('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
     const memoHash = web3.utils.keccak256(Buffer.from(memo))
     const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
     switch (Number(state)) {

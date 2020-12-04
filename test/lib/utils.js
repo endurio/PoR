@@ -5,7 +5,7 @@ const bitcoinjs = require('bitcoinjs-lib');
 const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
 
-const { txs } = require('../data/por');
+const { txs, keys } = require('../data/por');
 
 function loadBlockData() {
   const blocks = {}
@@ -56,6 +56,15 @@ module.exports = {
 
   loadBlockData() {
     return loadBlockData()
+  },
+
+  async registerPK(miner, beneficient = ZERO_ADDRESS) {
+    try {
+      const key = keys.find(k => k.address == miner)
+      await instPoR.registerPubKey('0x'+key.public, beneficient, {from: key.address}); // register and set the recipient
+    } catch(err) {
+      expect(err.reason).to.equal('registered')
+    }
   },
 
   commitTx(txHash, payer, brand) {

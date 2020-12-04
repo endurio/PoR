@@ -128,14 +128,36 @@ contract("PoR", accounts => {
       await utils.timeToClaim(txHash)
       const txData = txs[txHash]
 
-      const key = keys.find(k => k.address == txData.miner)
-      await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient        
       if (claimRevert) {
         return expectRevert(utils.claim(commitReceipt), claimRevert);
       }
 
-      return expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
+      { // snapshot scope
+        const ss = await snapshot.take();
+        await utils.registerPK(txData.miner, DUMMY_ADDRESS)
+        await expectEventClaim(utils.claim(commitReceipt), txHash, DUMMY_ADDRESS, multiplier);
+        await snapshot.revert(ss);
+      }
+
+      await utils.registerPK(txData.miner)
+      await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
     }
+  })
+
+  it("miner", async() => {
+    const ss = await snapshot.take();
+    await instPoR.registerPubKey('0x'+sender.public, keys[1].address); // register and set the recipient
+    await expectRevert(
+          instPoR.registerPubKey('0x'+sender.public, ZERO_ADDRESS), "registered");
+
+    await expectRevert(
+          instPoR.registerPubKey('0x'+keys[1].public, sender.address), "!owner");
+
+    // register the rest
+    for (let i = 2; i < keys.length; ++i) {
+      await instPoR.registerPubKey('0x'+keys[i].public, ZERO_ADDRESS, {from: keys[i].address});
+    }
+    await snapshot.revert(ss);
   })
 
   describe('mining', () => {
@@ -159,8 +181,7 @@ contract("PoR", accounts => {
         const txData = txs[txHash]
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
 
-        const key = keys.find(k => k.address == txData.miner)
-        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient
+        await utils.registerPK(txData.miner)
 
         await testPosPK(-1, undefined, "unregistered PKH");
         await testPosPK(4, undefined, "unregistered PKH");
@@ -199,8 +220,7 @@ contract("PoR", accounts => {
         const txData = txs[txHash]
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
 
-        const key = keys.find(k => k.address == txData.miner)
-        await instPoR.registerMiner('0x'+key.public, ZERO_ADDRESS); // register and set the recipient
+        await utils.registerPK(txData.miner)
 
         await mineTest({params, outpoint, bounty}, {})
         await mineTest({params, outpoint: [{...outpoint[0], pkhPos: 10}], bounty}, {claimRevert: 'unregistered PKH'})
@@ -303,26 +323,6 @@ contract("PoR", accounts => {
       }
     })
 
-    it("miner", async() => {
-      await instPoR.registerMiner('0x'+sender.public, keys[1].address); // register and set the recipient
-      await expectRevert(
-            instPoR.changeMiner('0x'+sender.pkh, sender.address), "only for old owner");
-      await instPoR.registerMiner('0x'+sender.public, ZERO_ADDRESS);    // reset the recipient by PKH
-      await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);        // change the recipient by the current owner
-      await instPoR.registerMiner('0x'+sender.public, ZERO_ADDRESS);    // reset the recipient by PKH
-
-      await expectRevert(
-            instPoR.registerMiner('0x'+keys[1].public, sender.address), "only pkh owner can change the beneficient address");
-      await instPoR.registerMiner('0x'+keys[1].public, ZERO_ADDRESS);
-      await expectRevert(
-            instPoR.changeMiner('0x'+keys[1].pkh, sender.address), "only for old owner");
-
-      // register the rest
-      for (let i = 2; i < keys.length; ++i) {
-        await instPoR.registerMiner('0x'+keys[i].public, ZERO_ADDRESS);
-      }
-    })
-
     it("claim", async() => {
       const commitTxs = [
         'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
@@ -343,8 +343,6 @@ contract("PoR", accounts => {
 
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-        const ownMiner = utils.addressCompare(txData.miner, sender.address) === 0; // we own the miner address
-        ownMinerTests[ownMiner] = true;
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
@@ -353,12 +351,7 @@ contract("PoR", accounts => {
           await utils.timeToClaim(txHash);
         }
 
-        if (ownMiner) {
-          const ss = await snapshot.take();
-          await instPoR.changeMiner('0x'+sender.pkh, DUMMY_ADDRESS);  // change the recipient by the current owner
-          await expectEventClaim(utils.claim(commitReceipt), txHash, DUMMY_ADDRESS);
-          await snapshot.revert(ss);
-        }
+        await utils.registerPK(txData.miner)
 
         // expect revert on claiming with fake reward
         const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
@@ -374,8 +367,6 @@ contract("PoR", accounts => {
         await expectRevert(utils.claim(commitReceipt), "commitment mismatch");
       }
 
-      expect(ownMinerTests[true], "should test data cover miner case").to.be.true;
-      expect(ownMinerTests[false], "should test data cover non-miner case").to.be.true;
       expect(tooSoonTestsCount).to.be.gt(0, "should test data cover `too soon` case");
     })
 

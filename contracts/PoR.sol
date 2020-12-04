@@ -315,26 +315,19 @@ contract PoR is DataStructure, IERC20Events {
         return time.elapse(timestamp) < MINING_TIME;
     }
 
-    // TODO: move miner functions to other contract
-    function registerMiner(
+    function registerPubKey(
         bytes   calldata    pubkey,     // uncompressed, unprefixed 64-bytes pubic key
         address             beneficient // (optional) rewarding address
     ) external {
-        address adr = CheckBitcoinSigs.accountFromPubkey(pubkey);
-        if (beneficient != address(0x0)) {
-            require(msg.sender == adr, "only pkh owner can change the beneficient address");
-            adr = beneficient;
-        }
+        address miner = CheckBitcoinSigs.accountFromPubkey(pubkey);
+        require(msg.sender == miner, "!owner");
         bytes20 pkh = _getPKH(_compressPK(pubkey));
-        miners[pkh] = adr;
-    }
-
-    function changeMiner(
-        bytes20 pkh,
-        address beneficient
-    ) external {
-        require(msg.sender == miners[pkh], "only for old owner");
-        miners[pkh] = beneficient;
+        require(miners[pkh] == address(0x0), "registered");
+        if (beneficient != address(0x0)) {
+            miners[pkh] = beneficient;
+        } else {
+            miners[pkh] = miner;
+        }
     }
 
     function _getPKH(
