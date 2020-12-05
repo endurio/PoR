@@ -34,6 +34,7 @@ const accs = [
 
 const ECPairs = {
     [accUTALegacy]: Btc.ECPair.fromPrivateKey(Buffer.from('443F917B8486E3F61320660B0F5F425A4A2C36FD658ECC325B755721C040D606', 'hex')),
+    [accUTASegwit]: Btc.ECPair.fromPrivateKey(Buffer.from('443F917B8486E3F61320660B0F5F425A4A2C36FD658ECC325B755721C040D606', 'hex')),
 }
 
 const memo = 'foobar'
