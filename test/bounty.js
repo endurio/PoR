@@ -104,6 +104,8 @@ contract("PoR: Bounty Mining", accounts => {
         'e4957541a90d54d0b8d8e8262fbc4f33df8f490e524f9a240b34538346032410': 'bounty: block too old',
         '1bd88cab82b0f38e086d63142a7d00dfa35d15273054ccd887e796e44d53093c': undefined,
         'e7b9d9c81d0f5c2e15619dcfacccf9f961acdae549d58ef26b49574c7d041611': undefined,
+        'f93b20c7c44774c6d54f473cb3b1a81c569145a87afcfc5db0410a23f7e0be54': undefined,
+        '45502cf89a706abe375bc1adaa0952925c435f3e3d8a1aedc668d2203e9c2fc0': undefined,
       }
 
       for (const txHash of Object.keys(commitTxs)) {
