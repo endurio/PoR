@@ -140,7 +140,7 @@ contract("PoR", accounts => {
       }
 
       await utils.registerPK(txData.miner)
-      await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
+      return expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
     }
   })
 
@@ -168,7 +168,7 @@ contract("PoR", accounts => {
       const ss = await snapshot.take();
       await utils.commitTx(losingTx)
       await utils.commitTx(winingTx)
-      await expectRevert(utils.commitTx(losingTx), 'better tx committed');
+      await expectRevert(utils.commitTx(losingTx), 'lost');
       await snapshot.revert(ss);
     })
 

@@ -73,7 +73,7 @@ module.exports = {
   },
 
   commit(params, outpoint, bounty) {
-    if (outpoint.length > 0) {
+    if (outpoint.length > 0 && bounty.length == 0) {
       return expectRevert(instPoR.commit(params, [], bounty), '!outpoint')
         .then(() => instPoR.commit(params, outpoint, bounty))
     }
@@ -123,14 +123,26 @@ module.exports = {
     return tx.outs.length - memoIdx - 2;
   },
 
-  prepareCommit(txParams, outpointParams) {
+  prepareCommit(txParams, outpointParams, bountyParams) {
     const params = this._prepareCommitTx(txParams)
     if (params.pubkeyPos) {
       var outpoint = []
     } else {
       var outpoint = this._prepareOutpointTx({...outpointParams, txHash: txParams.txHash})
     }
-    const bounty = this._prepareBountyTx(txParams)
+    if (bountyParams && bountyParams.noBounty) {
+      var bounty = []
+    } else {
+      var bounty = this._prepareBountyTx(txParams)
+      if (bounty.length > 0) {
+        const inputs = bounty[0].inputs.map(i => ({...i, pkhPos: 0}))
+        if (outpoint.length > 0) {
+          inputs[params.inputIndex].pkhPos = outpoint[0].pkhPos
+        }
+        outpoint = inputs
+        delete bounty[0].inputs
+      }
+    }
     return {params, outpoint, bounty}
   },
 

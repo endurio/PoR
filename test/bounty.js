@@ -128,16 +128,17 @@ contract("PoR: Bounty Mining", accounts => {
             ` = ${thousands(reward.bounty)}`)
         }
 
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
-
         { // snapshot scope
           const ss = await snapshot.take();
           // commit without bounty
-          const commitReceipt = await utils.commit(params, outpoint, [])
+          const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer}, {}, {noBounty: true});
+          const commitReceipt = await utils.commit(params, outpoint, bounty)
           await utils.timeToClaim(txHash)
           expectEventClaim(await utils.claim(commitReceipt), recipient, reward.base, payer, memoHash)
           await snapshot.revert(ss);
         }
+
+        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
 
         if (reason) {
           await expectRevert(utils.commit(params, outpoint, bounty), reason)

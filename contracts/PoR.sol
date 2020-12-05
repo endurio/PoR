@@ -85,13 +85,13 @@ contract PoR is DataStructure, IERC20Events {
     }
 
     struct ParamOutpoint {
-        uint32  pkhPos;     // (optional) position of miner PKH in the outpoint raw data
-                            // (including the first 8-bytes amount for optimization)
-        // tx
         uint32  version;
         uint32  locktime;
         bytes   vin;
         bytes   vout;
+
+        uint32  pkhPos;     // (optional) position of miner PKH in the outpoint raw data
+                            // (including the first 8-bytes amount for optimization)
     }
 
     struct ParamBounty {
@@ -101,15 +101,6 @@ contract PoR is DataStructure, IERC20Events {
         bytes   merkleProof;
 
         // tx
-        uint32  version;
-        uint32  locktime;
-        bytes   vin;
-        bytes   vout;
-
-        ParamTx[] inputs;
-    }
-
-    struct ParamTx {
         uint32  version;
         uint32  locktime;
         bytes   vin;
@@ -136,15 +127,16 @@ contract PoR is DataStructure, IERC20Events {
             bytes32[] memory outpointHash;
             uint[] memory outpointIdx;
             (firstInputSize, outpointHash, outpointIdx) = params.vin.processBountyInputs();
+            require(outpointHash.length == outpoint.length, 'bounty: outpoints count mismatch');
             for (uint i = 0; i < outpointHash.length; ++i) {
                 require (outpointHash[i] ==
                     ValidateSPV.calculateTxId(
-                        bounty[0].inputs[i].version,
-                        bounty[0].inputs[i].vin,
-                        bounty[0].inputs[i].vout,
-                        bounty[0].inputs[i].locktime
+                        outpoint[i].version,
+                        outpoint[i].vin,
+                        outpoint[i].vout,
+                        outpoint[i].locktime
                     ), 'bounty: inputs mismatch');
-                inValue += bounty[0].inputs[i].vout.extractOutputAtIndex(outpointIdx[i]).extractValue(); // unsafe
+                inValue += outpoint[i].vout.extractOutputAtIndex(outpointIdx[i]).extractValue(); // unsafe
             }
 
             bytes32 recipient = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
@@ -168,6 +160,35 @@ contract PoR is DataStructure, IERC20Events {
         } else {
             opret = params.vout.extractFirstOpReturn();
             rewardRate = MAX_TARGET;
+        }
+
+        bytes20 pkh;
+        { // stack too deep
+        // store the outpoint to claim the reward later
+        uint inputIndex = params.inputIndex;
+        bytes memory input = params.vin.extractInputAtIndex(inputIndex);
+        
+        if (params.pubkeyPos > 0) {
+            // custom P2SH redeem script with manual compressed PubKey position
+            pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
+        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
+            // redeem script for P2SH-P2WPKH
+            pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
+        } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
+            // redeem script for P2PKH
+            pkh = _getPKH(input.slice(input.length-33-4, 33));
+        } else {
+            // redeem script for P2WPKH
+            require(outpoint.length > 0, "!outpoint");
+            if (bounty.length == 0) {
+                bytes32 otxid = ValidateSPV.calculateTxId(outpoint[0].version, outpoint[0].vin, outpoint[0].vout, outpoint[0].locktime);
+                require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
+                inputIndex = 0;
+            }
+            uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
+            bytes memory output = outpoint[inputIndex].vout.extractOutputAtIndex(oIdx);
+            pkh = _extractPKH(output, outpoint[inputIndex].pkhPos);
+        }
         }
 
         bytes32 memoHash;
@@ -209,34 +230,9 @@ contract PoR is DataStructure, IERC20Events {
         uint32 rank = uint32(bytes4(keccak256(abi.encodePacked(blockHash, txid))));
         if (reward.rank != 0) {
             // accept the same rank here to allow re-commiting the same tx to change the input index
-            require(rank <= reward.rank, "better tx committed");
+            require(rank <= reward.rank, "lost");
         }
         reward.rank = rank;
-        }
-
-        bytes20 pkh;
-        { // stack too deep
-        // store the outpoint to claim the reward later
-        bytes memory input = params.vin.extractInputAtIndex(params.inputIndex);
-        
-        if (params.pubkeyPos > 0) {
-            // custom P2SH redeem script with manual compressed PubKey position
-            pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
-        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
-            // redeem script for P2SH-P2WPKH
-            pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
-        } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
-            // redeem script for P2PKH
-            pkh = _getPKH(input.slice(input.length-33-4, 33));
-        } else {
-            // redeem script for P2WPKH
-            require(outpoint.length > 0, "!outpoint");
-            bytes32 otxid = ValidateSPV.calculateTxId(outpoint[0].version, outpoint[0].vin, outpoint[0].vout, outpoint[0].locktime);
-            require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
-            uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
-            bytes memory output = outpoint[0].vout.extractOutputAtIndex(oIdx);
-            pkh = _extractPKH(output, outpoint[0].pkhPos);
-        }
         }
 
         uint timestamp = params.header.extractTimestamp();
