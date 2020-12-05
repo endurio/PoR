@@ -165,11 +165,21 @@ contract("PoR: Bounty Mining", accounts => {
           merkleProof: bounty[0].merkleProof.substring(0, bounty[0].merkleProof.length-2) + '00', // clear the last byte of the proof
         }]), 'bounty: invalid merkle proof')
         
-        // commit with bounty
-        const commitReceipt = await utils.commit(params, outpoint, bounty)
+        // commit with bounty with each inputIndex availabe
+        const nIns = bitcoinjs.Transaction.fromHex(txData.hex).ins.length
+        let commitReceipt
+        for (let inputIndex = nIns-1; inputIndex >= 0; --inputIndex) {
+          const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer, inputIndex});
+          commitReceipt = await utils.commit(params, outpoint, bounty)
+          if (inputIndex > 0) {
+            var hasInputIndexCase = true
+          }
+        }
         await utils.timeToClaim(txHash)
         expectEventClaim(await utils.claim(commitReceipt), recipient, reward.bounty, payer, memoHash)
       }
+
+      expect(hasInputIndexCase, "should cover `inputIndex > 0` case").to.be.true
     })
   })
 
