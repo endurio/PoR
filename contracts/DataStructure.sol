@@ -30,7 +30,7 @@ contract DataStructure {
 
     // Poof of Reference //
     mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
-    mapping(bytes32 => Header) internal headers;
+    mapping(bytes32 => mapping(bytes32 => Reward)) internal rewards;
 
     // constant
     uint64  constant COM_RATE_UNIT  = 1 << 32;
@@ -39,6 +39,8 @@ contract DataStructure {
 
     // events
     event GlobalConfig(uint comRate, uint levelStep);
+
+    // TODO: Activated and Deactivaed?
     event Active(
         bytes32 indexed memoHash,
         address indexed payer,
@@ -51,7 +53,15 @@ contract DataStructure {
         bytes32 indexed memoHash,
         address indexed payer
     );
-    event Reward(
+    event Mined(
+        bytes32 indexed memoHash,
+        address indexed payer,
+        bytes20 indexed pkh,
+        uint            amount,
+        uint            timestamp,
+        bytes32         blockHash
+    );
+    event Rewarded(
         bytes32 indexed memoHash,
         address indexed payer,
         address indexed miner,
@@ -107,40 +117,8 @@ struct Node {
     uint32      cutBackRate;// cutBack = commission * cutBackRate / MAX_UINT32
 }
 
-struct Header {
-    bytes32 merkleRoot;
-    uint    target;
-    address relayer;
-    uint32  timestamp;
-    mapping(bytes32 => Transaction) winner; // keccak(brand.memo) => winning tx
-}
-
-enum TxState {
-    CLAIMED,
-    PKH,        // for P2PKH, P2SH-P2WPKH
-    OUTPOINT    // for P2WPKH (along with outpointIdx)
-}
-
-/**
- * The winner tx is the tx with the smallest value of KECCAK(BlockHash + id)
- *
- * The id field is cleared in claim/claimWithPrevTx to mark the transaction is ready
- * for the upstream commission to be paid.
- *
- * KECCAK(BlockHash + miner) is used as the random seed for the upstream commission selection.
- *
- * minerData store miner data depend on the state:
- *  CLAIMED:     miner address
- *  PKH:         PKH of the miner
- *  OUTPOINT:    the first 20 bytes of outputTxLE
- */
-struct Transaction {
-    bytes32 id;
-    uint    reward;
-    address payer;
-    bytes20 minerData;
-    uint32  outpointIdx;    // for P2WPKH (along with minderData.OUTPOINT)
-    TxState state;
-    uint32  nBounty;        // bounty output count
-    bytes32 bounty;
+// TODO: test whether this is tightly packed
+struct Reward {
+    uint32  rank;
+    bytes28 commitment;     // keccak256(abi.encodePacked(payer, pkh, amount, timestamp))
 }

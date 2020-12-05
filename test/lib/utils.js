@@ -2,8 +2,20 @@ const _ = require('lodash');
 const hash256 = require('../vendor/hash256');
 const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
-const { blocks, txs } = require('../data/por');
 const { decShift } = require('../../tools/lib/big');
+const { time, expectRevert } = require('@openzeppelin/test-helpers');
+
+const { txs, keys } = require('../data/por');
+
+function loadBlockData() {
+  const blocks = {}
+  const fs = require('fs');
+  fs.readdirSync('./test/data/blocks').forEach(blockHash => {
+    blocks[blockHash] = fs.readFileSync('./test/data/blocks/'+blockHash).toString()
+  });
+  return blocks
+}
+const blocks = loadBlockData()
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
@@ -42,10 +54,30 @@ module.exports = {
     instPoR = await PoR.at(inst.address);
   },
 
-  commitTx(txHash, brand) {
-    const {block, merkle, transaction, extra} = this.prepareCommitTx(txHash, brand);
-    const blockHash = block.getId();
-    return instPoR.commitTx('0x' + blockHash, merkle, transaction, extra, ZERO_ADDRESS);
+  loadBlockData() {
+    return loadBlockData()
+  },
+
+  async registerPK(miner, beneficient = ZERO_ADDRESS) {
+    try {
+      const key = keys.find(k => k.address == miner)
+      await instPoR.registerPubKey('0x'+key.public, beneficient, {from: key.address}); // register and set the recipient
+    } catch(err) {
+      expect(err.reason).to.equal('registered')
+    }
+  },
+
+  commitTx(txHash, payer, brand) {
+    const {params, outpoint, bounty} = this.prepareCommit({txHash, brand, payer});
+    return this.commit(params, outpoint, bounty)
+  },
+
+  commit(params, outpoint, bounty) {
+    if (outpoint.length > 0 && bounty.length == 0) {
+      return expectRevert(instPoR.commit(params, [], bounty), '!outpoint')
+        .then(() => instPoR.commit(params, outpoint, bounty))
+    }
+    return instPoR.commit(params, outpoint, bounty)
   },
 
   extractTxParams(hex, tx) {
@@ -67,71 +99,164 @@ module.exports = {
     const vout = '0x'+hex.substring(pos, hex.length - 8); // the last 8 bytes is lock time
     return [tx.version, vin, vout, tx.locktime];
   },
-  
-  prepareCommitTx(txHash, brand) {
+
+  timeToClaim(txHash) {
+    const txData = txs[txHash]
+    const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
+    return time.increaseTo(block.timestamp + 60*60);
+  },
+
+  guessMemo(txHash) {
+    const txData = txs[txHash];
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+    const memo = findMemo(tx.outs);
+    if (memo.indexOf(' ') > 0) {
+      return memo.substring(0, memo.indexOf(' '))
+    }
+    return memo
+  },
+
+  countBounty(txHash) {
+    const txData = txs[txHash];
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex);
+    const memoIdx = findMemoIndex(tx.outs)
+    return tx.outs.length - memoIdx - 2;
+  },
+
+  prepareCommit(txParams, outpointParams, bountyParams) {
+    const params = this._prepareCommitTx(txParams)
+    if (params.pubkeyPos) {
+      var outpoint = []
+    } else {
+      var outpoint = this._prepareOutpointTx({...outpointParams, txHash: txParams.txHash})
+    }
+    if (bountyParams && bountyParams.noBounty) {
+      var bounty = []
+    } else {
+      var bounty = this._prepareBountyTx(txParams)
+      if (bounty.length > 0) {
+        const inputs = bounty[0].inputs.map(i => ({...i, pkhPos: 0}))
+        if (outpoint.length > 0) {
+          inputs[params.inputIndex].pkhPos = outpoint[0].pkhPos
+        }
+        outpoint = inputs
+        delete bounty[0].inputs
+      }
+    }
+    return {params, outpoint, bounty}
+  },
+
+  _prepareBountyTx({txHash}) {
+    const txData = txs[txHash]
+
+    // TODO: search for bounty sampling tx instead
+    if (!txData.bounty) {
+      return []
+    }
+
+    const blockData = blocks[txs[txData.bounty].block]
+    const [merkleProof, merkleIndex] = getMerkleProof(blockData, txData.bounty);
+    const [version, vin, vout, locktime] = this.extractTxParams(txs[txData.bounty].hex);
+    const bounty = {
+      header: '0x'+blockData.substring(0, 160),
+      merkleProof, merkleIndex,
+      version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+      locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+      vin, vout,
+      inputs: [],
+    }
+
+    const tx = bitcoinjs.Transaction.fromHex(txData.hex)
+    for (const input of tx.ins) {
+      const [version, vin, vout, locktime] = this.extractTxParams(txs[input.hash.reverse().toString('hex')].hex);
+      bounty.inputs.push({
+        version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
+        locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
+        vin, vout,
+      })
+    }
+
+    return [bounty]
+  },
+
+  _prepareCommitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {
     const txData = txs[txHash];
     const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-    const [proof, index] = getMerkleProof(block, txHash);
+    const [merkleProof, merkleIndex] = getMerkleProof(block, txHash);
 
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
     expect(tx.getId()).to.equal(txHash, 'tx data and hash mismatch');
     const [version, vin, vout, locktime] = this.extractTxParams(txData.hex, tx);
 
-    let memo = findMemo(tx.outs)
-    let memoLength = 0;
-    if (memo) {
-      if (brand) {
-        expect(memo.slice(0, brand.length)).to.equal(brand.toString(), 'unknown memo')
-        memoLength = memo.length > brand.length ? brand.length : 0;
-      } else {
-        if (memo.indexOf(' ') > 0) {
-          memo = memo.substring(0, memo.indexOf(' '))
-          memoLength = memo.length
+    if (!brand) {
+      brand = this.guessMemo(txHash)
+    }
+    const memoLength = brand.length
+
+    if (pubkeyPos == null) {
+      pubkeyPos = findPubKeyPos(tx.ins[inputIndex].script)
+
+      function findPubKeyPos(script) {
+        const sigLen = script[0];
+        if (script[sigLen+1] != 33) {
+          return 0 // not a pubkey
         }
+        // expect(script[sigLen+1]).to.equal(33, 'should pubkey length prefix byte is 33');
+        return sigLen+2;
       }
     }
-
-    const extra = {
-      inputIdx: 0,
-      memoLength,
-      pubkeyPos: 0,
-      bounty: false,
-    }
-
-    const transaction = {
+ 
+    return {
+      header: '0x'+blocks[txData.block].substring(0, 160),
+      merkleIndex,
+      merkleProof,
       version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
       locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
-      vin,
-      vout,
+      vin, vout,
+      memoLength,
+      inputIndex,
+      pubkeyPos,
+      payer,
     }
-
-    const merkle = {
-      index,
-      proof,
-    }
-
-    return {block, merkle, transaction, extra, memo};
   },
 
-  claim(txData, brandHash) {
-    return instPoR.claim('0x' + txData.block, brandHash);
-  },
-
-  claimWithPrevTx(txData, brandHash, {inputIdx, pkhPos, dxHash} = {}) {
+  _prepareOutpointTx({txHash, inputIdx=0, pkhPos=0, dxHash}) {
+    const txData = txs[txHash];
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
-    dxHash = dxHash || tx.ins[inputIdx || 0].hash.reverse().toString('hex');
 
+    const script = tx.ins[inputIdx].script
+    if (script && script.length > 0) {
+      if (script.length == 23 && script.slice(0, 3).toString('hex') == '160014') {
+        // redeem script for P2SH-P2WPKH
+        return []
+      }
+      if (script.length >= 33+4 && script[script.length-33-4-1] === 0x21) {
+        // redeem script for P2PKH
+        return []
+      }
+      console.error(script.length)
+      console.error(script.toString('hex'))
+    }
+
+    dxHash = dxHash || tx.ins[inputIdx].hash.reverse().toString('hex');
     // dependency tx
     const dxMeta = txs[dxHash];
+    if (!dxMeta) {
+      return [] // there's no data for dx here
+    }
     const [version, vin, vout, locktime] = this.extractTxParams(dxMeta.hex);
 
-    const extra = {
+    return [{
       version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
       locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
-      pkhPos: pkhPos || 0,
-    }
+      vin, vout,
+      pkhPos,
+    }]
+  },
 
-    return instPoR.claimWithPrevTx('0x' + txData.block, brandHash, vin, vout, extra);
+  claim(commitReceipt) {
+    const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
+    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount, mined.timestamp);
   },
 
   addressCompare(a, b) {
@@ -148,13 +273,32 @@ module.exports = {
     return a
   },
 
-  getExpectedReward(block, rate = 1) {
-    if (_.isString(block)) {
-      block = bitcoinjs.Block.fromHex(blocks[block]);
-    }
+  getExpectedReward(txHash, rate = 1) {
+    const txData = txs[txHash]
+    const block = bitcoinjs.Block.fromHex(blocks[txData.block])
+
     const MAX_TARGET = 1n<<240n;
     const target = this.bitsToTarget(block.bits)
-    return MAX_TARGET / target * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18));
+    const base = (MAX_TARGET / target) * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18))
+
+    if (txData.bounty) {
+      var nBounty = this.countBounty(txHash)
+      var bounty = MAX_TARGET * BigInt(nBounty*2) / target
+
+      // retargeting
+      const bountyBlock = bitcoinjs.Block.fromHex(blocks[txs[txData.bounty].block])
+      const bountyTarget = this.bitsToTarget(bountyBlock.bits)
+      const targetRate = bountyTarget / target
+      if (targetRate >= 2n) {
+        var retarget = targetRate
+        bounty /= retarget
+      }
+
+      // apply rate
+      bounty = bounty * BigInt(decShift(rate, 18)) / BigInt(1+'0'.repeat(18))
+    }
+
+    return {base, nBounty, bounty, retarget}
   },
 
   bitsToTarget(bits) {
@@ -172,17 +316,32 @@ module.exports = {
 }
 
 function findMemo(outs) {
+  const i = findMemoIndex(outs)
+  if (i < 0) {
+    return
+  }
+  const script = outs[i].script;
+  const len = script[1]
+  return script.slice(2, 2 + len).toString()
+}
+
+function findMemoIndex(outs) {
   for (let i = 0; i < outs.length; ++i) {
     const script = outs[i].script;
     if (script[0].toString(16) === '6a') { // OP_RET
-      const len = script[1]
-      const memo = script.slice(2, 2 + len).toString()
-      return memo
+      return i
     }
   }
+  return -1
 }
 
 function getMerkleProof(block, txid) {
+  if (_.isString(block)) {
+    if (block.length < 80) {
+      block = blocks[block]
+    }
+    block = bitcoinjs.Block.fromHex(block)
+  }
   let index = -1;
   const txs = [];
   for (const [i, tx] of Object.entries(block.transactions)) {

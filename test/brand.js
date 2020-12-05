@@ -4,11 +4,13 @@ const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
 const { time, expectRevert, expectEvent, BN } = require('@openzeppelin/test-helpers');
 const snapshot = require('./lib/snapshot');
-const { keys, blocks, txs } = require('./data/por');
 const utils = require('./lib/utils');
 const { decShift } = require('../tools/lib/big');
 const Web3 = require('web3')
 const web3 = new Web3()
+
+const { keys, txs } = require('./data/por');
+const blocks = utils.loadBlockData()
 
 const ENDR = artifacts.require("ENDR");
 const PoR = artifacts.require("PoR");
@@ -217,7 +219,7 @@ contract("BrandMarket", accounts => {
     await instPoR.commitTx('0x' + blockHash, '0x' + proofs, extra, '0x' + vin, '0x' + vout, brandPayer);
     await time.increaseTo(block.timestamp + 60*60)
     const miner = keys.find(k => k.address == txData.miner)
-    await instPoR.registerMiner('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
+    await instPoR.registerPubKey('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
     const memoHash = web3.utils.keccak256(Buffer.from(memo))
     const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
     switch (Number(state)) {

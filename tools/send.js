@@ -1,13 +1,26 @@
 const _ = require('lodash');
+const yargs = require('yargs');
 const { btcUtils } = require('./lib/btcUtils');
 const { decShift } = require('./lib/big');
 const Btc = require('bitcoinjs-lib');
 const prompt = require('prompt');
-const utils = require('../test/lib/utils');
 
 const Web3 = require('web3')
 const web3 = new Web3()
 const BN = web3.utils.BN
+
+const argv = yargs
+    .option('nouts', {
+        alias: 'n',
+        description: 'Number of bounty outputs',
+        type: 'number',
+    })
+    .option('nto', {
+        alias: 't',
+        description: 'Number of non-bounty outputs',
+        type: 'number',
+    })
+    .argv;
 
 const accUTALegacy = 'mvxJQTPXkF2ERXKnK5ovnrq7XZFuKmQCKY'
 const accUTASegwit = 'tb1q49239d5pwn63cqhmnnfgu8z6ndzah7dycgcfql'
@@ -21,6 +34,7 @@ const accs = [
 
 const ECPairs = {
     [accUTALegacy]: Btc.ECPair.fromPrivateKey(Buffer.from('443F917B8486E3F61320660B0F5F425A4A2C36FD658ECC325B755721C040D606', 'hex')),
+    [accUTASegwit]: Btc.ECPair.fromPrivateKey(Buffer.from('443F917B8486E3F61320660B0F5F425A4A2C36FD658ECC325B755721C040D606', 'hex')),
 }
 
 const memo = 'foobar'
@@ -34,7 +48,7 @@ const FEE_RATE = {
 }
 
 const BOUNTY = {
-    'BTC-TEST': 613,
+    'BTC-TEST': 999,
 }
 
 const FEE = {
@@ -47,7 +61,7 @@ async function doIt() {
     const utxos = await btcUtils.getUnspentTxs(symbol, sender)
     console.log('search for best input')
     const input = await searchForInput(utxos)
-    console.log('found best input')
+    console.log('found best input', input)
     if (!input.recipients || input.recipients.length === 0) {
         throw 'no eligible recipient'
     }
@@ -67,6 +81,19 @@ async function doIt() {
     const network = btcUtils.getNetwork(symbol)
     const psbt = new Btc.Psbt({network});
 
+    let outValue = 0
+    if (argv.nto) {
+        const value = parseInt(decShift(input.amount/2/argv.nto, 8))
+        console.log(`add ${argv.nto} outputs with ${value} sats`)
+        for (let i = 0; i < argv.nto; ++i) {
+            psbt.addOutput({
+                address: sender,
+                value,
+            })
+            outValue += value
+        }
+    }
+
     console.log('add the memo output')
     const data = Buffer.from(memo, 'utf8')
     const dataScript = Btc.payments.embed({data:[data]})
@@ -76,7 +103,7 @@ async function doIt() {
     })
 
     console.log('build the mining outputs and required inputs')
-    await build(psbt, inputs, recipients, sender)
+    await build(psbt, inputs, recipients, sender, outValue)
 
     const tx = psbt.extractTransaction()
 
@@ -96,9 +123,8 @@ async function doIt() {
     });
 }
 
-async function build(psbt, inputs, recipients, sender) {
+async function build(psbt, inputs, recipients, sender, outValue = 0) {
     let inValue = 0
-    let outValue = 0
 
     async function buildWithoutChange(psbt) {
         let recIdx = 0
@@ -114,6 +140,7 @@ async function build(psbt, inputs, recipients, sender) {
             inValue += parseInt(decShift(input.amount, 8))
 
             while (recIdx < recipients.length) {
+                // const rec = recipients[recIdx % (recipients.length>>1)]     // duplicate recipient
                 const rec = recipients[recIdx]
                 const output = rec.txouts[rec.txouts.length-1]
                 const amount = BOUNTY[symbol] // TODO: calculate this
@@ -162,7 +189,7 @@ async function searchForInput(utxos, maxBlocks = 6) {
     utxos.forEach(utxo => {
         utxo.recipients = []
     })
-    const nBounty = 2 + Math.floor(Math.random() * (MaxOutput-2))
+    const nBounty = argv.n || MaxOutput
     console.log(`search for the best UTXO for ${nBounty} outputs`)
     for (let n = info.blocks; n > info.blocks-maxBlocks; --n) {
         const block = await btcUtils.requestCryptoAPI(symbol, `blocks/${n}`)
@@ -176,13 +203,17 @@ async function searchForInput(utxos, maxBlocks = 6) {
                 }
                 // check for OP_RET in recipient tx
                 const tx = await btcUtils.requestCryptoAPI(symbol, `txs/txid/${recipient}`)
+                if (tx.index == 0) {
+                    continue    // skip the coinbase tx
+                }
                 const hasOpRet = tx.txouts.some(o => o.script.hex.startsWith('6a'))   // OP_RET = 0x6a
                 if (hasOpRet) {
                     continue
                 }
+                // TODO: check and skip existing address/script
                 utxo.recipients.push(tx)
                 if (utxo.recipients.length >= nBounty) {
-                    console.log(`found the first UTXO with enough ${nBounty} bounty outputs`, utxo)
+                    console.log(`found the first UTXO with enough ${nBounty} bounty outputs`)
                     return utxo
                 }
             }

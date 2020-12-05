@@ -34,20 +34,13 @@ contract ENDR is DataStructure, ERC20 {
         // All ERC20 functions are not upgradable
 
         // generator script: change the contract name in export part
-        // (export CONTRACT=PoR; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
+        // (export CONTRACT=PoR; cd ..; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
         impls[0x0af77eb1] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
-        impls[0x84cc9dfb] = implPoR;    // claim
-        impls[0xf4801418] = implPoR;    // claimWithPrevTx
-        impls[0xcc569628] = implPoR;    // getWinner
-        impls[0xc805084b] = implPoR;    // claimBounty
-        impls[0xe4463d61] = implPoR;    // commitTx
-        impls[0x6ec1c142] = implPoR;    // processBounty
-        impls[0xddcf8cd8] = implPoR;    // getBlockWinner
-        impls[0xd02898cf] = implPoR;    // commitBlock
-        impls[0x495dd54b] = implPoR;    // registerMiner
-        impls[0x0aa0738f] = implPoR;    // changeMiner
+        impls[0xc1b9b511] = implPoR;    // claim
+        impls[0xa181b684] = implPoR;    // commit
+        impls[0xd5e34b10] = implPoR;    // registerPubKey
         impls[0x8129fc1c] = implRefNetwork;     // initialize
         impls[0x003ba1ed] = implRefNetwork;     // setRoot
         impls[0xb0296b18] = implRefNetwork;     // setGlobalConfig

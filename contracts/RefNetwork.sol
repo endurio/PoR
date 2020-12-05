@@ -147,7 +147,7 @@ contract RefNetwork is DataStructure, ERC20, IRefNet, Initializable {
         } else {
             _transfer(address(this), miner, amount);
         }
-        emit Reward(memoHash, payer, miner, amount);
+        emit Rewarded(memoHash, payer, miner, amount);
         return true;    // go ahead and clean up the winning tx
     }
 
