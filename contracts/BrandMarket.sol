@@ -3,7 +3,7 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-block-members
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "./Token.sol";
 import "./lib/time.sol";
 import "./DataStructure.sol";
 import "./interface/Initializable.sol";
@@ -13,9 +13,9 @@ import "./interface/Initializable.sol";
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract BrandMarket is DataStructure, ERC20, Initializable {
+contract BrandMarket is DataStructure, Token, Initializable {
 
-    constructor() public ERC20("", "") {}
+    constructor() public Token("", "") {}
 
     function initialize() external override {
         Brand storage brand = brands[ENDURIO_MEMO_HASH][address(0x0)];
