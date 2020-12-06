@@ -87,6 +87,7 @@ contract("PoR: Bounty Mining", accounts => {
       await instBM.activate(FOOBAR, fund, decShift(payRate, 18), 0)
     })
 
+    // TODO: bounty mining for endur.io
     it("bounty mining", async() => {
       const payer = sender.address;
 
