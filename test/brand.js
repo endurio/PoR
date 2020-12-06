@@ -65,7 +65,7 @@ contract("BrandMarket", accounts => {
   describe('brand management', () => {
     it("mine some coin", async() => {
       const miner = await mineSomeCoin()
-      expect(utils.addressCompare(miner.address, sender.address)).to.equal(0, "should the miner address is the truffle test account")
+      expect(utils.addressCompare(miner, sender.address)).to.equal(0, "should the miner address is the truffle test account")
       const balance = await inst.balanceOf(sender.address)
       expect(balance).to.be.bignumber.equal(new BN(274882101312), "should some coin be mined")
     })
@@ -158,40 +158,44 @@ contract("BrandMarket", accounts => {
       await time.increaseTo(block.timestamp)
     })
 
+    const payRate = 0.001;
+
     it("activate new brand 'foobar'", async() => {
       const fund = 200000000000;
-      const payRate = 0.01;
       await instBM.activate(FOOBAR, fund, decShift(payRate, 18), 0)
     })
 
     it("mine the txs", async() => {
-      const payRate = 0.01;
       const payer = sender.address;
 
       const commitTxs = [
-        'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09',
-        '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2',
+        'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17',
+        '8fc78e141b1e3ce488d4d06f387f4fb8a78f87b9b3949d7bfe2fb70d9a984444',
+        '1bd88cab82b0f38e086d63142a7d00dfa35d15273054ccd887e796e44d53093c',
+        'e7b9d9c81d0f5c2e15619dcfacccf9f961acdae549d58ef26b49574c7d041611',
+        'f93b20c7c44774c6d54f473cb3b1a81c569145a87afcfc5db0410a23f7e0be54',
+        '45502cf89a706abe375bc1adaa0952925c435f3e3d8a1aedc668d2203e9c2fc0',
       ]
 
       for (const txHash of commitTxs) {
-        const {claimReceipt: receipt, miner} = await mine(txHash, payer)
-        const recipient = miner.address
-        const reward = utils.getExpectedReward(txs[txHash].block, payRate)
+        const receipt = await mine(txHash, payer)
+        const miner = txs[txHash].miner
+        const reward = utils.getExpectedReward(txHash, payRate).bounty
         const commission = reward / BigInt(2);
         expectEvent(receipt, 'CommissionLost', {
           payer,
-          miner: recipient,
+          miner,
           value: commission.toString(),
         });
         expectEvent(receipt, 'Transfer', {
           from: inst.address,
-          to: recipient,
+          to: miner,
           value: reward.toString(),
         });
-        expectEvent(receipt, 'Reward', {
+        expectEvent(receipt, 'Rewarded', {
           memoHash: FOOBAR_HASH,
           payer,
-          miner: recipient,
+          miner,
           value: reward.toString(),
         });
       }
@@ -205,33 +209,16 @@ contract("BrandMarket", accounts => {
   })
 
   async function mineSomeCoin() {
-    const {miner} = await mine('42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1')
-    return miner
+    const txHash = '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1'
+    await mine(txHash)
+    return txs[txHash].miner
   }
 
-  async function mine(txHash, brandPayer = ZERO_ADDRESS) {
-    const txData = txs[txHash]
-    const blockData = blocks[txData.block]
-    const header = blockData.substring(0, 160)
-    await instPoR.commitBlock('0x'+header)
-    const {block, proofs, extra, vin, vout, memo} = utils.prepareCommitTx(txHash);
-    const blockHash = block.getId();
-    await instPoR.commitTx('0x' + blockHash, '0x' + proofs, extra, '0x' + vin, '0x' + vout, brandPayer);
-    await time.increaseTo(block.timestamp + 60*60)
-    const miner = keys.find(k => k.address == txData.miner)
-    await instPoR.registerPubKey('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
-    const memoHash = web3.utils.keccak256(Buffer.from(memo))
-    const {state} = await instPoR.getWinner('0x'+blockHash, memoHash);
-    switch (Number(state)) {
-      case 0: throw "tx already claimed"
-      case 1: var claimReceipt = await utils.claim(txData, memoHash); break;
-      case 2: var claimReceipt = await utils.claimWithPrevTx(txData, memoHash); break;
-      default: throw `unknown TxState: ${state}`
-    }
-    return {
-      claimReceipt,
-      miner,
-    };
+  async function mine(txHash, payer) {
+    const commitReceipt = await utils.commitTx(txHash, payer)
+    await utils.timeToClaim(txHash)
+    await utils.registerPK(txs[txHash].miner)
+    return await utils.claim(commitReceipt)
   }
 })
 
