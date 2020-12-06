@@ -24,7 +24,7 @@ contract ENDR is DataStructure, Token {
         address implBrandMarket,
         address implRefNetwork,
         address implPoR
-    ) public Token("Endurio", "ENDR") {
+    ) public {
         owner = msg.sender; // responsible for contract upgrade
 
         // delegate call initialize() for each implementations

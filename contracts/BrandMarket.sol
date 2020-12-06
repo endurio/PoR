@@ -15,8 +15,6 @@ import "./interface/Initializable.sol";
  */
 contract BrandMarket is DataStructure, Token, Initializable {
 
-    constructor() public Token("", "") {}
-
     function initialize() external override {
         Brand storage brand = brands[ENDURIO_MEMO_HASH][address(0x0)];
         require(brand.payRate == 0, "already initialized");

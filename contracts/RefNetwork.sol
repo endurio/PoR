@@ -33,8 +33,6 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
 
     uint constant EPOCH = 1 weeks;
 
-    constructor() public Token("", "") {}
-
     function initialize() public override {
         require(root == address(0x0), "already initialized");
         root = msg.sender;
