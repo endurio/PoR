@@ -12,7 +12,7 @@ const web3 = new Web3()
 const { keys, txs } = require('./data/por');
 const blocks = utils.loadBlockData()
 
-const ENDR = artifacts.require("ENDR");
+const Endurio = artifacts.require("Endurio");
 const PoR = artifacts.require("PoR");
 const RefNetwork = artifacts.require("RefNetwork");
 const BrandMarket = artifacts.require("BrandMarket");
@@ -46,8 +46,8 @@ contract("BrandMarket", accounts => {
   });
 
   before('should our contracts be deployed', async () => {
-    inst = await ENDR.deployed();
-    expect(inst, 'contract not deployed: ENDR').to.not.be.null
+    inst = await Endurio.deployed();
+    expect(inst, 'contract not deployed: Endurio').to.not.be.null
     // proxy implementations
     expect(await PoR.deployed(), 'contract not deployed: PoR').to.not.be.null
     instPoR = await PoR.at(inst.address)

@@ -7,11 +7,11 @@ import "./Token.sol";
 import "./DataStructure.sol";
 
 /**
- * ENDR is an ERC20 and an Upgradable Proxy with 3 implementation contracts: PoR, BrandMarket and RefNetwork
+ * Endurio is an ERC20 and an Upgradable Proxy with 3 implementation contracts: PoR, BrandMarket and RefNetwork
  *
- * @dev proxy class can't have any (structured) state variable, all state is located in DataStructure
+ * @dev proxy class can't have any (structured) state variable, all state is located in DataStructure and Token
  */
-contract ENDR is DataStructure, Token {
+contract Endurio is DataStructure, Token {
     /**
      * @dev Emitted when the implementation is changed.
      * @param signature 4-bytes function signature.
