@@ -5,6 +5,7 @@ const { expect, util } = require('chai');
 const { time, expectRevert, expectEvent, BN } = require('@openzeppelin/test-helpers');
 const snapshot = require('./lib/snapshot');
 const utils = require('./lib/utils');
+const { thousands } = require('../tools/lib/big');
 
 const { keys, txs } = require('./data/por');
 const blocks = utils.loadBlockData()
@@ -374,8 +375,15 @@ contract("PoR", accounts => {
 })
 
 async function expectEventClaim(call, txHash, miner, multiplier) {
-  let reward = utils.getExpectedReward(txHash, multiplier).base;
-  const commission = reward / BigInt(2);
+  const reward = utils.getExpectedReward(txHash, multiplier);
+
+  console.log(`          + ${thousands(reward.base)}` + (
+    !reward.nBounty ? '' : ` * 2x${reward.nBounty}` +
+      (!reward.retarget ? '' : ` / ${thousands(reward.retarget)}`) +
+      ` = ${thousands(reward.bounty)}`)
+  )
+
+  const commission = reward.base / BigInt(2);
 
   const receipt = await call;
   expect(receipt.logs.length).to.equal(3, "claim must emit 3 events");
@@ -387,12 +395,12 @@ async function expectEventClaim(call, txHash, miner, multiplier) {
   expectEvent(receipt, 'Transfer', {
     from: ZERO_ADDRESS,
     to: miner,
-    value: reward.toString(),
+    value: reward.base.toString(),
   });
   expectEvent(receipt, 'Rewarded', {
     memoHash: ENDURIO_HASH,
     payer: ZERO_ADDRESS,
     miner,
-    value: reward.toString(),
+    value: reward.base.toString(),
   });
 }
