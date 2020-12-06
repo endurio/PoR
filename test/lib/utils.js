@@ -48,9 +48,9 @@ if (!String.prototype.reverseHex) {
 
 module.exports = {
   async initialize() {
-    const ENDR = artifacts.require("ENDR");
+    const Endurio = artifacts.require("Endurio");
     const PoR = artifacts.require("PoR");
-    inst = await ENDR.deployed();
+    inst = await Endurio.deployed();
     instPoR = await PoR.at(inst.address);
   },
 

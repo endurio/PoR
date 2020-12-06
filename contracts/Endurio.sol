@@ -3,15 +3,15 @@ pragma solidity >=0.6.2;
 
 // solium-disable security/no-inline-assembly
 
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "./Token.sol";
 import "./DataStructure.sol";
 
 /**
- * ENDR is an ERC20 and an Upgradable Proxy with 3 implementation contracts: PoR, BrandMarket and RefNetwork
+ * Endurio is an ERC20 and an Upgradable Proxy with 3 implementation contracts: PoR, BrandMarket and RefNetwork
  *
- * @dev proxy class can't have any (structured) state variable, all state is located in DataStructure
+ * @dev proxy class can't have any (structured) state variable, all state is located in DataStructure and Token
  */
-contract ENDR is DataStructure, ERC20 {
+contract Endurio is DataStructure, Token {
     /**
      * @dev Emitted when the implementation is changed.
      * @param signature 4-bytes function signature.
@@ -24,7 +24,7 @@ contract ENDR is DataStructure, ERC20 {
         address implBrandMarket,
         address implRefNetwork,
         address implPoR
-    ) public ERC20("Endurio", "ENDR") {
+    ) public {
         owner = msg.sender; // responsible for contract upgrade
 
         // delegate call initialize() for each implementations
