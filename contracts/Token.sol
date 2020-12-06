@@ -42,6 +42,11 @@ contract Token is Context, IERC20 {
     uint256 private _totalSupply;
 
     /**
+     * @dev setting allowance to this value to skip an SSTORE in transferFrom
+     */
+    uint constant FULL_ALLOWANCE = 0x8000000000000000000000000000000000000000000000000000000000000000;
+
+    /**
      * @dev Returns the name of the token.
      */
     function name() public pure returns (string memory) {
@@ -133,7 +138,10 @@ contract Token is Context, IERC20 {
      */
     function transferFrom(address sender, address recipient, uint256 amount) public virtual override returns (bool) {
         _transfer(sender, recipient, amount);
-        _approve(sender, _msgSender(), _allowances[sender][_msgSender()].sub(amount, "ERC20: transfer amount exceeds allowance"));
+        uint _allowance = _allowances[sender][_msgSender()];
+        if (_allowance != FULL_ALLOWANCE) {
+            _approve(sender, _msgSender(), _allowance.sub(amount, "ERC20: transfer amount exceeds allowance"));
+        }
         return true;
     }
 
