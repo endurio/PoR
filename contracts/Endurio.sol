@@ -48,7 +48,6 @@ contract Endurio is DataStructure, Token {
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
         impls[0xb6b55f25] = implRefNetwork;     // deposit
         impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
-        impls[0xf2a75fe4] = implRefNetwork;     // empty
         impls[0xb12a6852] = implRefNetwork;     // setRent
         impls[0xbafb3581] = implRefNetwork;     // getNodeDetails
         impls[0xf2be4140] = implRefNetwork;     // reward

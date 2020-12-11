@@ -24,6 +24,9 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
+    /// highest value with only a single bit
+    uint    constant FULL_WITHDRAW      = 0x8000000000000000000000000000000000000000000000000000000000000000;
+
     uint    constant ROOT_COM_RATE      = 32;       // root commission chance = 1/32
     uint    constant RENT_CD            = 1 weeks;
     uint    constant FREEZING_DURATION  = 1 weeks;  // node expired for this long can be flatten (by anyone)
@@ -70,19 +73,17 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
 
     /**
      * withraw and contract the node expiration, revert on over-withdraw
-     * use empty() to withdraw all remain rent balance
+     * withdraw(FULL_WITHDRAW) to empty the remain balance
      */
     function withdraw(uint amount) external {
         Node storage node = nodes[msg.sender];
-        node.balance = node.balance.withdraw(amount);
+        if (amount == FULL_WITHDRAW) {
+            amount = node.balance.getRemain();
+            delete node.balance;
+        } else {
+            node.balance = node.balance.withdraw(amount);
+        }
         _mint(msg.sender, amount);
-    }
-
-    function empty() external {
-        Node storage node = nodes[msg.sender];
-        uint remain = node.balance.getRemain();
-        delete node.balance;
-        _transfer(address(this), msg.sender, remain);
     }
 
     function setRent(uint rent) external {
