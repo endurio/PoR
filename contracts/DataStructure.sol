@@ -67,11 +67,6 @@ contract DataStructure {
         address indexed miner,
         uint            value
     );
-    event CommissionAvailable(
-        address indexed miner,
-        bytes32 indexed memoHash,
-        bytes32 indexed blockHash
-    );
     event CommissionLost(
         address indexed payer,
         address indexed miner,
@@ -110,7 +105,6 @@ struct Brand {
 
 struct Node {
     uint        balance;    // BurningBalance
-    uint        commission; // total unclaimed commission for this node and upstream
     bytes32     parent;
     address     prevParent;
     uint64      cooldownEnd;

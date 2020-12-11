@@ -19,9 +19,6 @@ import "./interface/IRefNet.sol";
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
-    uint constant MAX_INT64     = (1<<63)-1;   // maximum int value ABDK Math64x64 can hold
-    uint constant MAX_UINT192   = (1<<192)-1;
-
     using BurningBalance for uint;
     using MaturingAddress for bytes32;
     using libnode for Node;
@@ -124,8 +121,8 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         uint amount,
         bytes32 memoHash,
         bytes32 seed
-    ) external override returns (bool ok) {
-        require(msg.sender == address(this), "from claim only");
+    ) external override {
+        require(msg.sender == address(this), "!internal");  // must be called from other implemenetation
         uint commission = CapMath.scaleDown(amount, config.comRate, COM_RATE_UNIT);
         uint claimable = _claimReward(memoHash, payer, amount+commission);
         if (claimable < amount) {
@@ -145,7 +142,6 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
             _transfer(address(this), miner, amount);
         }
         emit Rewarded(memoHash, payer, miner, amount);
-        return true;    // go ahead and clean up the winning tx
     }
 
     /**
