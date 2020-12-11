@@ -36,23 +36,23 @@ contract BrandMarket is DataStructure, Token, Initializable {
             // new campaign
             require(payRate > 0, "!payRate");
             require(fund > 0, "!fund");
-            brand.payRate = payRate;
-            brand.expiration = time.next(duration > 0 ? duration : 2 weeks);
+            brand.payRate = uint192(payRate); // overflowable: unexploitable
+            brand.expiration = uint64(time.next(duration > 0 ? duration : 2 weeks)); // overflowable: unexploitable
         } else {
             // power-up old campaign
             if (payRate > 0) {
                 require(payRate > brand.payRate, "!expired: increasing pay rate only");
-                brand.payRate = payRate;
+                brand.payRate = uint192(payRate);
             }
             if (duration > 0) {
-                uint newExpiration = time.next(duration);
+                uint64 newExpiration = uint64(time.next(duration)); // overflowable: unexploitable
                 require(newExpiration > brand.expiration, "!expired: extending expiration only");
                 brand.expiration = newExpiration;
             }
         }
         if (fund > 0) {
             _transfer(msg.sender, address(this), fund);
-            brand.balance += fund;  // overflowable but unexploitable
+            brand.balance += fund; // overflowable: unexploitable
         }
         emit Active(memoHash, msg.sender, memo, payRate, brand.balance, brand.expiration);
     }

@@ -99,8 +99,8 @@ struct Config {
 
 struct Brand {
     uint    balance;
-    uint    payRate;    // 18 decimals
-    uint    expiration;
+    uint192 payRate;    // 18 decimals
+    uint64  expiration;
 }
 
 struct Node {
