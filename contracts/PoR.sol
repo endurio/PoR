@@ -28,18 +28,6 @@ contract PoR is DataStructure, IERC20Events {
 
     uint constant MAX_TARGET = 1<<240;
 
-    // extra param bit posistion (from the right)
-    uint constant EXTRA_VERSION     = 32*0;
-    uint constant EXTRA_LOCKTIME    = 32*1;
-    uint constant EXTRA_MERKLE_IDX  = 32*2;
-    uint constant EXTRA_INPUT_IDX   = 32*3;
-
-    // bounty params
-    uint constant BOUNTY_MINTXSIZE  = 32*0; // +32
-    uint constant BOUNTY_TXSIZE     = 32*1; // +32
-    uint constant BOUNTY_MINVALUE   = 32*2; // +64
-    uint constant BOUNTY_TOTALVALUE = 32*4; // +64
-
     using BTCUtils for bytes;
     using BTCUtils for uint256;
     using BytesLib for bytes;
