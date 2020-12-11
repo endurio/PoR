@@ -101,7 +101,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         uint    balance,
         uint    rent,
         uint    cooldownEnd,
-        uint    commission,
+        uint    cutBackRate,
         address parent,
         uint    duration,
         uint    maturedTime,
@@ -111,7 +111,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         balance = node.balance.getRemain();
         rent = node.balance.getRate();
         cooldownEnd = node.cooldownEnd;
-        commission = node.commission;
+        cutBackRate = node.cutBackRate;
         (parent, duration, maturedTime) = node.parent.unpack();
         prevParent = node.prevParent;
     }
