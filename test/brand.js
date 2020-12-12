@@ -9,7 +9,7 @@ const { decShift } = require('../tools/lib/big');
 const Web3 = require('web3')
 const web3 = new Web3()
 
-const { keys, txs } = require('./data/por');
+const { keys, txs } = require('./data/all');
 const blocks = utils.loadBlockData()
 
 const Endurio = artifacts.require("Endurio");

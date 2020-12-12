@@ -5,7 +5,7 @@ const bitcoinjs = require('bitcoinjs-lib');
 const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
 
-const { txs, keys } = require('../data/por');
+const { txs, keys } = require('../data/all');
 
 function loadBlockData() {
   const blocks = {}

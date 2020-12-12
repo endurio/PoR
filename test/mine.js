@@ -7,7 +7,7 @@ const snapshot = require('./lib/snapshot');
 const utils = require('./lib/utils');
 const { thousands } = require('../tools/lib/big');
 
-const { keys, txs } = require('./data/por');
+const { keys, txs } = require('./data/all');
 const blocks = utils.loadBlockData()
 
 const Endurio = artifacts.require("Endurio");
