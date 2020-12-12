@@ -184,8 +184,8 @@ contract("PoR", accounts => {
 
         await utils.registerPK(txData.miner)
 
-        await testPosPK(-1, undefined, "unregistered PKH");
-        await testPosPK(4, undefined, "unregistered PKH");
+        await testPosPK(-1, undefined, "!miner");
+        await testPosPK(4, undefined, "!miner");
         await testPosPK(5, "Slice out of bounds", undefined);
         await testPosPK(0);
 
@@ -224,7 +224,7 @@ contract("PoR", accounts => {
         await utils.registerPK(txData.miner)
 
         await mineTest({params, outpoint, bounty}, {})
-        await mineTest({params, outpoint: [{...outpoint[0], pkhPos: 10}], bounty}, {claimRevert: 'unregistered PKH'})
+        await mineTest({params, outpoint: [{...outpoint[0], pkhPos: 10}], bounty}, {claimRevert: '!miner'})
 
         // PKH position in output script is different between segwit and legacy
         const isSegWit = txData.hex.slice(8, 10) === '00';
@@ -356,16 +356,16 @@ contract("PoR", accounts => {
 
         // expect revert on claiming with fake reward
         const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount+1, mined.timestamp), "commitment mismatch");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount, mined.timestamp-60*60), "commitment mismatch");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, DUMMY_ADDRESS, mined.amount, mined.timestamp), "commitment mismatch");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, mined.pkh, mined.amount, mined.timestamp), "commitment mismatch");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pubkey, mined.amount+1, mined.timestamp), "#commitment");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pubkey, mined.amount, mined.timestamp-60*60), "#commitment");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, DUMMY_ADDRESS, mined.amount, mined.timestamp), "#commitment");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, mined.pubkey, mined.amount, mined.timestamp), "#commitment");
 
         // honest claim
         await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner);
 
         // double claim
-        await expectRevert(utils.claim(commitReceipt), "commitment mismatch");
+        await expectRevert(utils.claim(commitReceipt), "#commitment");
       }
 
       expect(tooSoonTestsCount).to.be.gt(0, "should test data cover `too soon` case");

@@ -54,12 +54,12 @@ contract DataStructure {
         address indexed payer
     );
     event Mined(
+        bytes32 indexed blockHash,
         bytes32 indexed memoHash,
         address indexed payer,
-        bytes20 indexed pkh,
+        bytes           pubkey,
         uint            amount,
-        uint            timestamp,
-        bytes32         blockHash
+        uint            timestamp
     );
     event Rewarded(
         bytes32 indexed memoHash,

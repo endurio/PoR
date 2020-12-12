@@ -256,7 +256,7 @@ module.exports = {
 
   claim(commitReceipt) {
     const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
-    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pkh, mined.amount, mined.timestamp);
+    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pubkey, mined.amount, mined.timestamp);
   },
 
   addressCompare(a, b) {

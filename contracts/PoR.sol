@@ -34,19 +34,37 @@ contract PoR is DataStructure, IERC20Events {
     using Packed   for bytes32;
 
     function claim(
-        bytes32 blockHash,  // big-endian
+        bytes32 blockHash,
         bytes32 memoHash,
         address payer,
-        bytes20 pkh,
+        bytes   calldata pubkey,
         uint    amount,
         uint    timestamp
     ) external {
-        Reward storage reward = rewards[blockHash][memoHash];
-        require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, pkh, amount, timestamp))), "commitment mismatch");
         require(!_minable(timestamp), "too soon");
 
-        address miner = miners[pkh];
-        require(miner != address(0x0), "unregistered PKH");
+        Reward storage reward = rewards[blockHash][memoHash];
+        address miner;
+        if (pubkey.length == 65) {
+            bytes memory pk = pubkey.slice(0, 64);
+            bytes20 pkh = _getPKH(_compressPK(pk));
+            require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, pkh, amount, timestamp))), "#commitment");
+            miner = CheckBitcoinSigs.accountFromPubkey(pk);
+        } else if (pubkey.length == 64) {
+            bytes memory cpk = _compressPK(pubkey);
+            require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, cpk, amount, timestamp))), "#commitment");
+            miner = CheckBitcoinSigs.accountFromPubkey(pubkey);
+        } else if (pubkey.length == 33) {
+            require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, pubkey, amount, timestamp))), "#commitment");
+            miner = miners[_getPKH(pubkey)];
+        } else if (pubkey.length == 20) {
+            require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, pubkey, amount, timestamp))), "#commitment");
+            miner = miners[bytes20(pubkey.toBytes32())];
+        } else {
+            revert("bad pubkey");
+        }
+
+        require(miner != address(0x0), "!miner");
         IRefNet(address(this)).reward(miner, payer, amount, memoHash, blockHash);
         delete rewards[blockHash][memoHash];
     }
@@ -150,21 +168,21 @@ contract PoR is DataStructure, IERC20Events {
             rewardRate = MAX_TARGET;
         }
 
-        bytes20 pkh;
+        bytes memory pkc;   // PubKey commitment, can be either 20-bytes pkh or 33-bytes compressed pubkey
         { // stack too deep
         // store the outpoint to claim the reward later
         uint inputIndex = params.inputIndex;
         bytes memory input = params.vin.extractInputAtIndex(inputIndex);
-        
+
         if (params.pubkeyPos > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
-            pkh = _getPKH(input.slice(32+4+1+params.pubkeyPos, 33));
+            pkc = input.slice(32+4+1+params.pubkeyPos, 33);
         } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
-            pkh = bytes20(input.slice(32+4+4, 20).toBytes32());
+            pkc = input.slice(32+4+4, 20);
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
-            pkh = _getPKH(input.slice(input.length-33-4, 33));
+            pkc = input.slice(input.length-33-4, 33);
         } else {
             // redeem script for P2WPKH
             require(outpoint.length > 0, "!outpoint");
@@ -175,7 +193,7 @@ contract PoR is DataStructure, IERC20Events {
             }
             uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
             bytes memory output = outpoint[inputIndex].vout.extractOutputAtIndex(oIdx);
-            pkh = _extractPKH(output, outpoint[inputIndex].pkhPos);
+            pkc = _extractPKH(output, outpoint[inputIndex].pkhPos);
         }
         }
 
@@ -231,8 +249,8 @@ contract PoR is DataStructure, IERC20Events {
 
         uint amount = _getBrandReward(memoHash, params.payer, rewardRate);
 
-        reward.commitment = bytes28(keccak256(abi.encodePacked(params.payer, pkh, amount, timestamp)));
-        emit Mined(memoHash, params.payer, pkh, amount, timestamp, bytes32(blockHash));
+        reward.commitment = bytes28(keccak256(abi.encodePacked(params.payer, pkc, amount, timestamp)));
+        emit Mined(bytes32(blockHash), memoHash, params.payer, pkc, amount, timestamp);
     }
 
     function _processMemo(
@@ -280,16 +298,16 @@ contract PoR is DataStructure, IERC20Events {
     function _extractPKH(
         bytes   memory  output,
         uint32          pkhIdx
-    ) internal pure returns (bytes20) {
+    ) internal pure returns (bytes memory) {
         // the first 8 bytes is ussually for amount, so zero index makes no sense here
         if (pkhIdx > 0) {
             // pkh location is provided for saving gas
-            return bytes20(output.slice(pkhIdx, 20).toBytes32());
+            return output.slice(pkhIdx, 20);
         }
         // standard outpoint types: p2pkh, p2wpkh
         bytes memory pkh = output.extractHash();
-        require(pkh.length == 20, "unsupported PKH in outpoint");
-        return bytes20(pkh.toBytes32());
+        require(pkh.length == 20, "unsupported PKH in outpoint");   // TODO: remove this
+        return pkh;
     }
 
     /**
