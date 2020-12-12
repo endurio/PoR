@@ -22,6 +22,7 @@ const ENDURIO_HASH = '0x022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DUMMY_ADDRESS = '0x0123456789012345678901234567890123456789';
+const DUMMY_HASH = '0x0123456789012345678901234567890123456789012345678901234567890123';
 
 contract("PoR", accounts => {
   expect(accounts[0]).to.equal(keys[0].address, 'should the first keys data is the sender account');
@@ -133,32 +134,8 @@ contract("PoR", accounts => {
         return expectRevert(utils.claim(commitReceipt), claimRevert);
       }
 
-      { // snapshot scope
-        const ss = await snapshot.take();
-        await utils.registerPK(txData.miner, DUMMY_ADDRESS)
-        await expectEventClaim(utils.claim(commitReceipt), txHash, DUMMY_ADDRESS, multiplier);
-        await snapshot.revert(ss);
-      }
-
-      await utils.registerPK(txData.miner)
       return expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
     }
-  })
-
-  it("miner", async() => {
-    const ss = await snapshot.take();
-    await instPoR.registerPubKey('0x'+sender.public, keys[1].address); // register and set the recipient
-    await expectRevert(
-          instPoR.registerPubKey('0x'+sender.public, ZERO_ADDRESS), "registered");
-
-    await expectRevert(
-          instPoR.registerPubKey('0x'+keys[1].public, sender.address), "!owner");
-
-    // register the rest
-    for (let i = 2; i < keys.length; ++i) {
-      await instPoR.registerPubKey('0x'+keys[i].public, ZERO_ADDRESS, {from: keys[i].address});
-    }
-    await snapshot.revert(ss);
   })
 
   describe('mining', () => {
@@ -182,14 +159,12 @@ contract("PoR", accounts => {
         const txData = txs[txHash]
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
 
-        await utils.registerPK(txData.miner)
-
-        await testPosPK(-1, undefined, "!miner");
-        await testPosPK(4, undefined, "!miner");
-        await testPosPK(5, "Slice out of bounds", undefined);
+        await testPosPK(-1, {missingMiner: true});
+        await testPosPK(4, {missingMiner: true});
+        await testPosPK(5, {commitRevert: "Slice out of bounds"});
         await testPosPK(0);
 
-        async function testPosPK(pubkeyPosOffset, commitRevert, claimRevert) {
+        async function testPosPK(pubkeyPosOffset, {commitRevert, missingMiner}={}) {
           const p = {
             ...params,
             pubkeyPos: params.pubkeyPos+pubkeyPosOffset,
@@ -200,8 +175,12 @@ contract("PoR", accounts => {
           const ss = await snapshot.take();
           const commitReceipt = await utils.commit(p, outpoint, bounty);
           await utils.timeToClaim(txHash)
-          if (claimRevert) {
-            await expectRevert(utils.claim(commitReceipt), claimRevert);
+          if (missingMiner) {
+            try {
+              await utils.claim(commitReceipt);
+            } catch(err) {
+              expect(err).contains('missing miner')
+            }
           } else {
             await utils.claim(commitReceipt);
           }
@@ -221,10 +200,8 @@ contract("PoR", accounts => {
         const txData = txs[txHash]
         const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
 
-        await utils.registerPK(txData.miner)
-
         await mineTest({params, outpoint, bounty}, {})
-        await mineTest({params, outpoint: [{...outpoint[0], pkhPos: 10}], bounty}, {claimRevert: '!miner'})
+        await mineTest({params, outpoint: [{...outpoint[0], pkhPos: 10}], bounty}, {missingMiner: true})
 
         // PKH position in output script is different between segwit and legacy
         const isSegWit = txData.hex.slice(8, 10) === '00';
@@ -232,7 +209,7 @@ contract("PoR", accounts => {
 
         await mineTest(utils.prepareCommit({txHash, brand: ENDURIO}, {dxHash: wrongDxHash}), {commitRevert: 'outpoint mismatch'})
 
-        async function mineTest({params, outpoint, bounty}, {commitRevert, claimRevert}) {
+        async function mineTest({params, outpoint, bounty}, {commitRevert, claimRevert, missingMiner}) {
           if (commitRevert) {
             return expectRevert(utils.commit(params, outpoint, bounty), commitRevert);
           }
@@ -241,6 +218,12 @@ contract("PoR", accounts => {
           await utils.timeToClaim(txHash)
           if (claimRevert) {
             await expectRevert(utils.claim(commitReceipt), claimRevert);
+          } else if (missingMiner) {
+            try {
+              await utils.claim(commitReceipt);
+            } catch(err) {
+              expect(err).contains('missing miner')
+            }
           } else {
             await utils.claim(commitReceipt);
           }
@@ -352,14 +335,13 @@ contract("PoR", accounts => {
           await utils.timeToClaim(txHash);
         }
 
-        await utils.registerPK(txData.miner)
-
         // expect revert on claiming with fake reward
         const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pubkey, mined.amount+1, mined.timestamp), "#commitment");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pubkey, mined.amount, mined.timestamp-60*60), "#commitment");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, DUMMY_ADDRESS, mined.amount, mined.timestamp), "#commitment");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, mined.pubkey, mined.amount, mined.timestamp), "#commitment");
+        const pubkey = '0x'+utils.minerToClaim(mined).public
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, pubkey, mined.amount+1, mined.timestamp), "#commitment");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, pubkey, mined.amount, mined.timestamp-60*60), "#commitment");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, DUMMY_HASH, mined.amount, mined.timestamp), "#commitment");
+        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, pubkey, mined.amount, mined.timestamp), "#commitment");
 
         // honest claim
         await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner);

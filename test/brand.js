@@ -217,7 +217,6 @@ contract("BrandMarket", accounts => {
   async function mine(txHash, payer) {
     const commitReceipt = await utils.commitTx(txHash, payer)
     await utils.timeToClaim(txHash)
-    await utils.registerPK(txs[txHash].miner)
     return await utils.claim(commitReceipt)
   }
 })

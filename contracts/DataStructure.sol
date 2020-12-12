@@ -29,7 +29,6 @@ contract DataStructure {
     address root;                       // owner of the root node, can be changed by owner
 
     // Poof of Reference //
-    mapping(bytes20 => address) internal miners; // pubkey bytes32 => address
     mapping(bytes32 => mapping(bytes32 => Reward)) internal rewards;
 
     // constant
@@ -54,10 +53,10 @@ contract DataStructure {
         address indexed payer
     );
     event Mined(
-        bytes32 indexed blockHash,
+        bytes32         blockHash,
         bytes32 indexed memoHash,
         address indexed payer,
-        bytes           pubkey,
+        bytes32 indexed pubkey,
         uint            amount,
         uint            timestamp
     );

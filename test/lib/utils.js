@@ -58,15 +58,6 @@ module.exports = {
     return loadBlockData()
   },
 
-  async registerPK(miner, beneficient = ZERO_ADDRESS) {
-    try {
-      const key = keys.find(k => k.address == miner)
-      await instPoR.registerPubKey('0x'+key.public, beneficient, {from: key.address}); // register and set the recipient
-    } catch(err) {
-      expect(err.reason).to.equal('registered')
-    }
-  },
-
   commitTx(txHash, payer, brand) {
     const {params, outpoint, bounty} = this.prepareCommit({txHash, brand, payer});
     return this.commit(params, outpoint, bounty)
@@ -256,7 +247,23 @@ module.exports = {
 
   claim(commitReceipt) {
     const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
-    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, mined.pubkey, mined.amount, mined.timestamp);
+    const pubkey = '0x'+this.minerToClaim(mined).public
+    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, pubkey, mined.amount, mined.timestamp);
+  },
+
+  minerToClaim(mined) {
+    if (mined.logs) {
+      mined = mined.logs.find(log => log.event === 'Mined').args
+    }
+    if (mined.pubkey.substring(2+40) == '000000000000000000000000') {
+      var key = keys.find(key => key.pkh == mined.pubkey.substring(2, 2+40))
+    } else {
+      var key = keys.find(key => key.public.startsWith(mined.pubkey.substring(2)))
+    }
+    if (!key) {
+      throw 'missing miner for: ' + mined.pubkey
+    }
+    return key
   },
 
   addressCompare(a, b) {

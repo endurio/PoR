@@ -117,7 +117,6 @@ contract("PoR: Bounty Mining", accounts => {
         const txData = txs[txHash]
         const reward = utils.getExpectedReward(txHash, payRate)
 
-        await utils.registerPK(txData.miner)
         const recipient = txData.miner
 
         const nBounty = utils.countBounty(txHash)
@@ -212,12 +211,9 @@ contract("PoR: Bounty Mining", accounts => {
   async function mine(txHash) {
     const commitReceipt = await utils.commitTx(txHash)
     await utils.timeToClaim(txHash)
-    const txData = txs[txHash]
-    const miner = keys.find(k => k.address == txData.miner)
-    await instPoR.registerPubKey('0x'+miner.public, ZERO_ADDRESS) // register and set the recipient
     return {
       claimReceipt: utils.claim(commitReceipt),
-      miner,
+      miner: utils.minerToClaim(commitReceipt),
     };
   }
 })
