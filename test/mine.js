@@ -337,11 +337,14 @@ contract("PoR", accounts => {
 
         // expect revert on claiming with fake reward
         const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
-        const pubkey = '0x'+utils.minerToClaim(mined).public
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, pubkey, mined.amount+1, mined.timestamp), "#commitment");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, pubkey, mined.amount, mined.timestamp-60*60), "#commitment");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, DUMMY_HASH, mined.amount, mined.timestamp), "#commitment");
-        await expectRevert(instPoR.claim(mined.blockHash, mined.memoHash, DUMMY_ADDRESS, pubkey, mined.amount, mined.timestamp), "#commitment");
+        const key = utils.minerToClaim(mined)
+        const params = utils.paramsToClaim(mined)
+        await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: key.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, amount: params.amount+1}, {from: key.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: key.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, isPKH: !params.isPKH}, {from: key.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, pubX: DUMMY_HASH}, {from: key.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, pubY: (BigInt(params.pubY)-2n).toString()}, {from: key.address}), "!miner");
 
         // honest claim
         await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner);

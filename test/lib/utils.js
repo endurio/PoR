@@ -6,6 +6,7 @@ const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
 
 const { txs, keys } = require('../data/all');
+const { min } = require('moment');
 
 function loadBlockData() {
   const blocks = {}
@@ -247,15 +248,40 @@ module.exports = {
 
   claim(commitReceipt) {
     const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
-    const pubkey = '0x'+this.minerToClaim(mined).public
-    return instPoR.claim(mined.blockHash, mined.memoHash, mined.payer, pubkey, mined.amount, mined.timestamp);
+    const key = this.minerToClaim(mined)
+    const params = this.paramsToClaim(mined)
+    return instPoR.claim(params, {from: key.address});
+  },
+
+  paramsToClaim(mined) {
+    if (mined.logs) {
+      mined = mined.logs.find(log => log.event === 'Mined').args
+    }
+    const { blockHash, memoHash, payer, amount, timestamp } = mined;
+    const key = this.minerToClaim(mined)
+    const params = {
+      blockHash, memoHash, payer,
+      amount: amount.toString(),
+      timestamp: timestamp.toString(),
+      isPKH: this.isPKH(mined),
+      pubX: '0x'+key.public.substring(0, 64),
+      pubY: '0x'+key.public.substring(64),
+    }
+    return params;
+  },
+
+  isPKH(mined) {
+    if (mined.logs) {
+      mined = mined.logs.find(log => log.event === 'Mined').args
+    }
+    return mined.pubkey.substring(2+40) == '000000000000000000000000'
   },
 
   minerToClaim(mined) {
     if (mined.logs) {
       mined = mined.logs.find(log => log.event === 'Mined').args
     }
-    if (mined.pubkey.substring(2+40) == '000000000000000000000000') {
+    if (this.isPKH(mined)) {
       var key = keys.find(key => key.pkh == mined.pubkey.substring(2, 2+40))
     } else {
       var key = keys.find(key => key.public.startsWith(mined.pubkey.substring(2)))

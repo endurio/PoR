@@ -33,24 +33,37 @@ contract PoR is DataStructure, IERC20Events {
     using BytesLib for bytes;
     using Packed   for bytes32;
 
+    struct ParamClaim {
+        bytes32 blockHash;
+        bytes32 memoHash;
+        address payer;
+        bool    isPKH;
+        bytes32 pubX;
+        uint    pubY;
+        uint    amount;
+        uint    timestamp;
+    }
+
     function claim(
-        bytes32 blockHash,
-        bytes32 memoHash,
-        address payer,
-        bytes   calldata pubkey,
-        uint    amount,
-        uint    timestamp
+        ParamClaim calldata params
     ) external {
-        require(!_minable(timestamp), "too soon");
-        Reward storage reward = rewards[blockHash][memoHash];
+        require(!_minable(params.timestamp), "too soon");
 
-        require(reward.commitment == bytes28(keccak256(abi.encodePacked(payer, amount, timestamp, pubkey.toBytes32()))) ||
-                reward.commitment == bytes28(keccak256(abi.encodePacked(payer, amount, timestamp, bytes32(_pkh(pubkey))))),
-            "#commitment");
+        Reward storage reward = rewards[params.blockHash][params.memoHash];
 
-        address miner = CheckBitcoinSigs.accountFromPubkey(pubkey);
-        IRefNet(address(this)).reward(miner, payer, amount, memoHash, blockHash);
-        delete rewards[blockHash][memoHash];
+        bytes32 pubkey;
+        if (params.isPKH) {
+            pubkey = bytes32(_pkh(params.pubX, params.pubY));
+        } else {
+            pubkey = params.pubX;
+        }
+        require(reward.commitment == bytes28(keccak256(abi.encodePacked(params.payer, params.amount, params.timestamp, pubkey))), "#commitment");
+
+        address miner = CheckBitcoinSigs.accountFromPubkey(abi.encodePacked(params.pubX, params.pubY));
+        require(miner == msg.sender, "!miner");
+
+        IRefNet(address(this)).reward(miner, params.payer, params.amount, params.memoHash, params.blockHash);
+        delete rewards[params.blockHash][params.memoHash];
     }
 
     struct ParamCommit {
@@ -301,11 +314,13 @@ contract PoR is DataStructure, IERC20Events {
         return time.elapse(timestamp) < MINING_TIME;
     }
 
+    // PKH from uncompressed, unprefixed 64-bytes pubic key
     function _pkh(
-        bytes memory pubkey    // uncompressed, unprefixed 64-bytes pubic key
+        bytes32 pubX,
+        uint    pubY
     ) internal pure returns (bytes20 pkh) {
-        uint8 prefix = uint8(pubkey[pubkey.length - 1]) % 2 == 1 ? 3 : 2;
-        bytes memory compressedPubkey = abi.encodePacked(prefix, pubkey.slice(0, 32));
+        uint8 prefix = pubY & 1 == 1 ? 3 : 2;
+        bytes memory compressedPubkey = abi.encodePacked(prefix, pubX);
         return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
     }
 }
