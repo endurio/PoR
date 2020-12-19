@@ -474,8 +474,7 @@ library BTCUtils {
             }
         }
 
-        // fee = CapMath.scaleDown(fee, firstInputSize, txSize);
-        require(fee * minTxSize <= minValue * txSize, "bounty: dust output");  // unsave
+        require(fee * minTxSize <= minValue * txSize, "bounty: dust output");  // unsafe
     }
 
     function extractScript(bytes memory _output) internal pure returns (bytes memory) {
