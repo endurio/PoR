@@ -31,7 +31,6 @@ contract PoR is DataStructure, IERC20Events {
     using BTCUtils for bytes;
     using BTCUtils for uint256;
     using BytesLib for bytes;
-    using Packed   for bytes32;
 
     struct ParamClaim {
         bytes32 blockHash;

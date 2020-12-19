@@ -1,5 +1,7 @@
 pragma solidity ^0.6.2;
 
+import "@openzeppelin/contracts/math/SafeMath.sol";
+
 library util {
     function abs(int a) internal pure returns (uint) {
         return uint(a > 0 ? a : -a);
@@ -11,12 +13,18 @@ library util {
         return a > b ? int(a - b) : -int(b - a);
     }
 
-    // TODO: apply SafeMath
     function add(uint a, int b) internal pure returns(uint) {
         if (b < 0) {
             return a - uint(-b);
         }
         return a + uint(b);
+    }
+
+    function safeAdd(uint a, int b) internal pure returns(uint) {
+        if (b < 0) {
+            return SafeMath.sub(a, uint(-b));
+        }
+        return SafeMath.add(a, uint(b));
     }
 
     function inOrder(uint a, uint b, uint c) internal pure returns (bool) {
@@ -62,23 +70,5 @@ library util {
         if (x >= 0x10) {x >>= 4; r += 4;}
         if (x >= 0x4) {x >>= 2; r += 2;}
         if (x >= 0x2) r += 1; // No need to shift x anymore
-    }
-}
-
-library Packed {
-    function ui32(bytes32 packed, uint bitOffset) internal pure returns (uint32) {
-        return uint32(extract(packed, bitOffset, (1<<32)-1));
-    }
-
-    function ui64(bytes32 packed, uint bitOffset) internal pure returns (uint64) {
-        return uint64(extract(packed, bitOffset, (1<<64)-1));
-    }
-
-    function flag(bytes32 packed, uint bitOffset) internal pure returns (bool) {
-        return extract(packed, bitOffset, 1) == 1;
-    }
-
-    function extract(bytes32 packed, uint bitOffset, uint bitMask) internal pure returns (uint) {
-        return (uint(packed) >> bitOffset) & bitMask;
     }
 }

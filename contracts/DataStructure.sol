@@ -103,7 +103,9 @@ struct Brand {
 }
 
 struct Node {
-    uint        balance;    // BurningBalance
+    uint192     rent;
+    uint64      expiration;
+
     bytes32     parent;
     address     prevParent;
     uint64      cooldownEnd;

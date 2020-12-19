@@ -7,6 +7,19 @@ library CapMath {
     int256  constant MAX_INT256  = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
     int256  constant MIN_INT256  = MAX_INT256 + 1;
 
+    /// @return x*a/b or x/b*a
+    function checkedScale(uint x, uint a, uint b) internal pure returns (uint) {
+        if (a == 0) {
+            return 0;
+        }
+        uint y = x * a;
+        if (y / a == x) {
+            return y / b;
+        }
+        // overflown
+        return x/b*a;   // overflowable
+    }
+
     /**
      * @dev assert(a <= b)
      * @return x * a / b (precision can be lower if (x*a) overflown)
