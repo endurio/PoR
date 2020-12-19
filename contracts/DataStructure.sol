@@ -110,8 +110,7 @@ struct Node {
     uint32      cutBackRate;// cutBack = commission * cutBackRate / MAX_UINT32
 }
 
-// TODO: test whether this is tightly packed
 struct Reward {
     uint32  rank;
-    bytes28 commitment;     // keccak256(abi.encodePacked(payer, pkh, amount, timestamp))
+    bytes28 commitment;     // keccak256(abi.encodePacked(payer, amount, timestamp, (pubX|pkh)))
 }
