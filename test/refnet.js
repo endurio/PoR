@@ -64,42 +64,19 @@ contract("RefNetwork", accounts => {
     expect(utils.inst, 'utils contract instances not initialized').to.not.be.null
   })
 
-  describe('refnet management', () => {
-    it("mine some coin and fund the noder", async() => {
-      const miner = await mineSomeCoin()
-      const balance = await inst.balanceOf(miner)
-      expect(balance).to.be.bignumber.equal(new BN(1054043766919), "should some coin be mined")
-      await inst.transfer(acc1, 100+'0'.repeat(9), {from: miner});
-      await inst.transfer(acc2, 200+'0'.repeat(9), {from: miner});
-      await inst.transfer(acc3, 300+'0'.repeat(9), {from: miner});
-      await inst.transfer(acc4, 400+'0'.repeat(9), {from: miner});
-    })
+  before('mine some coin and fund the noder', async () => {
+    const miner = await mineSomeCoin()
+    const balance = await inst.balanceOf(miner)
+    expect(balance).to.be.bignumber.equal(new BN(1054043766919), "should some coin be mined")
+    await inst.transfer(acc1, 100+'0'.repeat(9), {from: miner});
+    await inst.transfer(acc2, 200+'0'.repeat(9), {from: miner});
+    await inst.transfer(acc3, 300+'0'.repeat(9), {from: miner});
+    await inst.transfer(acc4, 400+'0'.repeat(9), {from: miner});
+  })
 
-    it("deposit to uninitialized node", async() => {
-      await expectRevert(instRN.deposit(1, {from: acc4}), '!rent')
-    })
-
-    it("withdraw from uninitialized node", async() => {
-      await expectRevert(instRN.withdraw(1, {from: acc4}), '!rent')
-    })
-
-    it("set rent to zero", async() => {
-      await expectRevert(instRN.setRent(0, {from: acc4}), '!rent')
-    })
-
-    it("set rent first time", async() => {
-      await instRN.setRent(13, {from: acc4})
-    })
-
-    it("set rent second time with no deposit", async() => {
-      await instRN.setRent(613, {from: acc4})
-    })
-
-    it("deposit zero to initialized node", async() => {
-      await expectRevert(instRN.deposit(0, {from: acc4}), '!amount')
-    })
-
+  describe('sandbox', () => {
     it("over deposit with rent = 1", async() => {
+      const ss = await snapshot.take()
       await instRN.setRent(1, {from: acc4})
       if (true) {
         await expectRevert(instRN.deposit(400+'0'.repeat(8)+'1', {from: acc4}), 'exceeds balance')
@@ -110,6 +87,7 @@ contract("RefNetwork", accounts => {
         await instRN.setRent(2, {from: acc4})
         await instRN.deposit('18446744073709551615', {from: acc4})
       }
+      await snapshot.revert(ss)
     })
 
     it("exact deposit and withdraw with rent = 1", async() => {
@@ -243,6 +221,90 @@ contract("RefNetwork", accounts => {
         await snapshot.revert(ss)
       }
     })
+  })
+
+  describe('rent management', () => {
+    it("deposit to uninitialized node", async() => {
+      await expectRevert(instRN.deposit(1, {from: acc4}), '!rent')
+    })
+
+    it("withdraw from uninitialized node", async() => {
+      await expectRevert(instRN.withdraw(1, {from: acc4}), '!rent')
+    })
+
+    it("set rent to zero", async() => {
+      await expectRevert(instRN.setRent(0, {from: acc4}), '!rent')
+    })
+
+    it("set rent first time", async() => {
+      await setRentAndCheckBalance(13, acc4)
+    })
+
+    it("set rent second time with no deposit", async() => {
+      await setRentAndCheckBalance(613, acc4)
+    })
+
+    it("deposit zero to initialized node", async() => {
+      await expectRevert(instRN.deposit(0, {from: acc4}), '!amount')
+    })
+
+    it("set rent on expired", async() => {
+      await setRentAndCheckBalance(100, acc4)
+      expectEvent(await instRN.deposit('100', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '100' })
+      await time.increase(100);
+      await expectRevert(instRN.setRent(50, {from: acc4}), 'expired')
+    })
+
+    it("reactive an expired rent", async() => {
+      expectEvent(await instRN.deposit('300000000000', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '300000000000' })
+    })
+
+    it("new rent too high", async() => {
+      await expectRevert(instRN.setRent(202, {from: acc4}), 'new rent too high')
+    })
+
+    it("double the rent", async() => {
+      // the first setRent (on uninitialized node) does not trigger the rent cooldown, so this will passed
+      await setRentAndCheckBalance(200, acc4)
+    })
+
+    it("set rent on cool down", async() => {
+      await expectRevert(instRN.setRent(100, {from: acc4}), 'cooldown')
+      await time.increase(time.duration.days(6))
+      await expectRevert(instRN.setRent(136, {from: acc4}), 'cooldown')
+    })
+
+    it("half the rent", async() => {
+      await time.increase(time.duration.days(1))
+      await setRentAndCheckBalance(100, acc4)
+    })
+
+    it("exhaust the balance", async() => {
+      await instRN.withdraw('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', {from: acc4})
+      await expectRevert(instRN.setRent(10000, {from: acc4}), 'expired')
+    })
+
+    it("reactive an exhausted rent", async() => {
+      expectEvent(await instRN.deposit('3000', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '3000' })
+    })
+
+    it("set the rent after reactive", async() => {
+      await expectRevert(instRN.setRent(136, {from: acc4}), 'cooldown')
+    })
+
+    async function setRentAndCheckBalance(newRent, acc4) {
+      let details = await instRN.getNodeDetails(acc4)
+      if (details.expiration.isZero()) {  // uninitialized node
+        return instRN.setRent(newRent, {from: acc4})
+      }
+      const before = details.rent.mul(details.expiration.sub(await time.latest()))
+      await instRN.setRent(newRent, {from: acc4})
+      details = await instRN.getNodeDetails(acc4)
+      expect(details.rent).is.bignumber.equal(new BN(newRent))
+      const after = details.rent.mul(details.expiration.sub(await time.latest()))
+      expect(after).is.bignumber.at.most(before).at.least(before.sub(details.rent).sub(details.rent))
+    }
+
   })
 
   async function mineSomeCoin() {
