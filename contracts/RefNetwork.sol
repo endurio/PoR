@@ -158,7 +158,8 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         address payer,
         uint amount,
         bytes32 memoHash,
-        bytes32 seed
+        bytes32 seed,
+        bool skipCommission
     ) external override {
         require(msg.sender == address(this), "!internal");  // must be called from other implemenetation
         uint commission = CapMath.scaleDown(amount, config.comRate, COM_RATE_UNIT);

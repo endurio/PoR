@@ -38,7 +38,7 @@ contract Endurio is DataStructure, Token {
         impls[0x0af77eb1] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
-        impls[0x5f10c43a] = implPoR;    // claim
+        impls[0x7a3b3117] = implPoR;    // claim
         impls[0xa181b684] = implPoR;    // commit
         impls[0x8129fc1c] = implRefNetwork;     // initialize
         impls[0x003ba1ed] = implRefNetwork;     // setRoot
@@ -49,7 +49,7 @@ contract Endurio is DataStructure, Token {
         impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
         impls[0xb12a6852] = implRefNetwork;     // setRent
         impls[0xbafb3581] = implRefNetwork;     // getNodeDetails
-        impls[0xf2be4140] = implRefNetwork;     // reward
+        impls[0x09812fe2] = implRefNetwork;     // reward
     }
 
     function mustDelegateCall(address impl, bytes memory data) internal {

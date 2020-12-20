@@ -37,6 +37,7 @@ contract PoR is DataStructure, IERC20Events {
         bytes32 memoHash;
         address payer;
         bool    isPKH;
+        bool    skipCommission;
         bytes32 pubX;
         uint    pubY;
         uint    amount;
@@ -61,7 +62,7 @@ contract PoR is DataStructure, IERC20Events {
         address miner = CheckBitcoinSigs.accountFromPubkey(abi.encodePacked(params.pubX, params.pubY));
         require(miner == msg.sender, "!miner");
 
-        IRefNet(address(this)).reward(miner, params.payer, params.amount, params.memoHash, params.blockHash);
+        IRefNet(address(this)).reward(miner, params.payer, params.amount, params.memoHash, params.blockHash, params.skipCommission);
         delete rewards[params.blockHash][params.memoHash];
     }
 

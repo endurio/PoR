@@ -266,6 +266,7 @@ module.exports = {
       isPKH: this.isPKH(mined),
       pubX: '0x'+key.public.substring(0, 64),
       pubY: '0x'+key.public.substring(64),
+      skipCommission: false,
     }
     return params;
   },

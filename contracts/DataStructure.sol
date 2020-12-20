@@ -66,6 +66,11 @@ contract DataStructure {
         address indexed miner,
         uint            value
     );
+    event CommissionSkip(
+        address indexed payer,
+        address indexed miner,
+        uint            value
+    );
     event CommissionLost(
         address indexed payer,
         address indexed miner,
@@ -74,6 +79,12 @@ contract DataStructure {
     event CommissionRoot(
         address indexed payer,
         address indexed miner,
+        uint            value
+    );
+    event CommissionPaid(
+        address indexed payer,
+        address indexed miner,
+        address indexed payee,
         uint            value
     );
     
