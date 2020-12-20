@@ -40,10 +40,6 @@ contract Endurio is DataStructure, Token {
         impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
         impls[0x7a3b3117] = implPoR;    // claim
         impls[0xa181b684] = implPoR;    // commit
-        impls[0x8129fc1c] = implRefNetwork;     // initialize
-        impls[0x003ba1ed] = implRefNetwork;     // setRoot
-        impls[0xb0296b18] = implRefNetwork;     // setGlobalConfig
-        impls[0xcda92be4] = implRefNetwork;     // getGlobalConfig
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
         impls[0xb6b55f25] = implRefNetwork;     // deposit
         impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
@@ -114,6 +110,26 @@ contract Endurio is DataStructure, Token {
     function setOwner(address newOwner) external {
         require(msg.sender == owner, "!owner");
         owner = newOwner;
+    }
+
+    function getRoot() external view returns (address) {
+        return root;
+    }
+
+    function setRoot(address newRoot) external {
+        require(msg.sender == root || msg.sender == owner, "!owner");
+        root = newRoot;
+    }
+
+    function setGlobalConfig(uint32 comRate, uint224 levelStep) external {
+        require(msg.sender == root || msg.sender == owner, "!owner");
+        config.comRate = comRate;
+        config.levelStep = levelStep;
+        emit GlobalConfig(comRate, levelStep);
+    }
+
+    function getGlobalConfig() external view returns (uint32 comRate, uint224 levelStep) {
+        return (config.comRate, config.levelStep);
     }
 
     /**

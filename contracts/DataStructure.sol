@@ -14,8 +14,8 @@ contract DataStructure {
 
     // System Config //
     Config config = Config(
-        COM_RATE_UNIT / 2,  // 1/2 of miner reward
-        1e9                 // levelStep: halves the commission every 1e9 of rent up the stream
+        uint32(COM_RATE_UNIT / 2),  // 1/2 of miner reward
+        1e9                         // levelStep: halves the commission every 1e9 of rent up the stream
     );
 
     // BrandMarket //
@@ -32,6 +32,9 @@ contract DataStructure {
     mapping(bytes32 => mapping(bytes32 => Reward)) internal rewards;
 
     // constant
+    // com-rate is [0;4,294,967,296)
+    uint    constant COM_RATE_UNIT      = 1e9;
+
     uint64  constant COM_RATE_UNIT  = 1 << 32;
     uint    constant MAX_UINT32     = (1<<32)-1;
     uint    constant MAX_UINT64     = (1<<64)-1;
@@ -98,13 +101,13 @@ contract DataStructure {
 
 struct Config {
     // commission = reward * comRate / COM_RATE_UNIT;
-    uint64  comRate;
+    uint32  comRate;
 
-    // commission halves every globalLevelStep of rent up the stream
-    // globalLevelStep must never be zero.
+    // commission halves every levelStep of rent up the stream
+    // (?) levelStep must never be zero.
     //     0: all commission go to the miner himself
     //     1: almost all commission go to the first node with non-zero rent
-    uint192 levelStep;
+    uint224 levelStep;
 }
 
 struct Brand {

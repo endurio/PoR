@@ -34,22 +34,6 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         root = msg.sender;
     }
 
-    function setRoot(address newRoot) external {
-        require(msg.sender == root || msg.sender == owner, "!owner");
-        root = newRoot;
-    }
-
-    function setGlobalConfig(uint64 comRate, uint192 levelStep) external {
-        require(msg.sender == root || msg.sender == owner, "!owner");
-        config.comRate = comRate;
-        config.levelStep = levelStep;
-        emit GlobalConfig(comRate, levelStep);
-    }
-
-    function getGlobalConfig() external view returns (uint64 comRate, uint192 levelStep) {
-        return (config.comRate, config.levelStep);
-    }
-
     /**
      * init a node, attach or re-attach to parent node
      */
