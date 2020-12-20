@@ -92,10 +92,12 @@ module.exports = {
     return [tx.version, vin, vout, tx.locktime];
   },
 
-  timeToClaim(txHash) {
+  async timeToClaim(txHash) {
     const txData = txs[txHash]
     const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
-    return time.increaseTo(block.timestamp + 60*60);
+    if (await time.latest() < block.timestamp + 60*60) {
+      return time.increaseTo(block.timestamp + 60*60);
+    }
   },
 
   guessMemo(txHash) {
