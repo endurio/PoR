@@ -200,7 +200,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         if (commission > 0) {
             // DEBUG & TEST //
             // Use config.comRate as an addition entropy for statistical testing.
-            // Ideally, this should be remove in production, but it doesn't hurt if we don't.
+            // Ideally, this should be removed in production, not a disaster if we forgot.
             uiSeed = uint(keccak256(abi.encodePacked(uiSeed, config.comRate)));
 
             _commitCommission(memoHash, payer, miner, commission, uiSeed);
