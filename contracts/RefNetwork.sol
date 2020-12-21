@@ -37,6 +37,11 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
      */
     function attach(address parent) external {
         nodes[msg.sender].attach(parent);
+
+        while (parent != address(0x0)) {
+            require(parent != msg.sender, "circular reference");
+            parent = nodes[parent].parent;
+        }
     }
 
     /**
@@ -287,7 +292,6 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
 library libnode {
     function attach(Node storage n, address parent) internal {
         n.parent = parent;
-        // TODO: check circular ref
     }
 
     // a node's weight

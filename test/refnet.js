@@ -74,6 +74,27 @@ contract("RefNetwork", accounts => {
     await inst.transfer(acc4, 400+'0'.repeat(9), {from: miner});
   })
 
+  describe('node management', () => {
+    it("self reference", async() => {
+      await expectRevert(instRN.attach(acc2, {from: acc2}), 'circular reference')
+    })
+
+    it("circular reference", async() => {
+      await instRN.attach(acc3, {from: acc4})
+      await expectRevert(instRN.attach(acc4, {from: acc3}), 'circular reference')
+      await instRN.attach(acc2, {from: acc3})
+      await expectRevert(instRN.attach(acc4, {from: acc2}), 'circular reference')
+      await instRN.attach(acc1, {from: acc2})
+      await expectRevert(instRN.attach(acc4, {from: acc1}), 'circular reference')
+      await expectRevert(instRN.attach(acc3, {from: acc1}), 'circular reference')
+      await expectRevert(instRN.attach(acc2, {from: acc1}), 'circular reference')
+      await instRN.attach(acc2, {from: acc4})
+      await instRN.attach(acc4, {from: acc3})
+      await expectRevert(instRN.attach(acc3, {from: acc1}), 'circular reference')
+      await expectRevert(instRN.attach(acc2, {from: acc2}), 'circular reference')
+    })
+  })
+
   describe('sandbox', () => {
     it("over deposit with rent = 1", async() => {
       const ss = await snapshot.take()
