@@ -6,7 +6,6 @@ pragma solidity >=0.6.2;
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "./Token.sol";
 import "./lib/CapMath.sol";
-import "./lib/MaturingAddress.sol";
 import "./DataStructure.sol";
 import "./lib/abdk/ABDKMath64x64.sol";
 import "./lib/time.sol";
@@ -20,7 +19,6 @@ import "./interface/IRefNet.sol";
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
-    using MaturingAddress for bytes32;
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
@@ -149,18 +147,14 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         uint    expiration,
         uint    cooldownEnd,
         uint    cutbackRate,
-        address parent,
-        uint    duration,
-        uint    maturedTime,
-        address prevParent
+        address parent
     ) {
         Node storage node = nodes[noder];
         rent = node.rent;
         expiration = node.expiration;
         cooldownEnd = node.cooldownEnd;
         cutbackRate = node.cutbackRate;
-        (parent, duration, maturedTime) = node.parent.unpack();
-        prevParent = node.prevParent;
+        parent = node.parent;
     }
 
     function reward(
@@ -257,7 +251,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
                 return;
             }
             distance -= rent;   // safe
-            noder = node.pickParent(seed);
+            noder = node.parent;
         }
 
         // reuse amount for actual rewarded amount
@@ -291,36 +285,10 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
 }
 
 library libnode {
-    uint constant MAX_UINT64 = (1<<64)-1;
-
-    using MaturingAddress for bytes32;
-
-    function attach(Node storage n, address newParent) internal {
-        bytes32 parent = n.parent;
-        if (parent == 0) { // uninitialized
-            n.parent = MaturingAddress.pack(newParent, 0, time.blockTimestamp());
-            return;
-        }
-        // new maturing process starts from the last matured time if the current address is matured,
-        // from the last start time otherwise
-        uint lastMaturedTime = parent.getMaturedTime();
-        if (!time.reach(lastMaturedTime)) { // not matured
-            lastMaturedTime = parent.getStartTime();
-        } else { // matured
-            n.prevParent = parent.getAddress();
-        }
-        // new maturing duration is the time elapsed from the last parent matured time
-        uint duration = time.elapse(lastMaturedTime);
-        uint maturedTime = time.next(duration);
-        // overflow check
-        if (maturedTime > MAX_UINT64 || maturedTime < time.blockTimestamp()) {
-            maturedTime = MAX_UINT64; // cap the result
-            duration = time.remain(maturedTime);
-        }
-        n.parent = MaturingAddress.pack(newParent, duration, maturedTime);
+    function attach(Node storage n, address parent) internal {
+        n.parent = parent;
+        // TODO: check circular ref
     }
-
-    // TODO: function revertParentTransfer
 
     // a node's weight
     function getRent(Node storage n) internal view returns (uint) {
@@ -329,19 +297,5 @@ library libnode {
             return 0;
         }
         return n.rent;
-    }
-
-    // pick parent or prevParent using a random uint seed
-    function pickParent(Node storage n, uint seed) internal view returns (address) {
-        (address parent, uint duration, uint maturedTime) = n.parent.unpack();
-        if (time.reach(maturedTime)) {
-            return parent;  // fully matured, no luck require
-        }
-        uint elapsed = time.elapse(maturedTime - duration);
-        // it's ok to be a tiny bit biased toward parent
-        if (seed % duration < elapsed) {
-            return parent;  // lucky
-        }
-        return n.prevParent;
     }
 }

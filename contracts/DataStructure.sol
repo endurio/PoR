@@ -121,8 +121,7 @@ struct Node {
     uint192     rent;
     uint64      expiration;
 
-    bytes32     parent;
-    address     prevParent;
+    address     parent;
     uint64      cooldownEnd;
     uint32      cutbackRate;        // cutBack = commission * cutbackRate / CUTBACK_RATE_UNIT
 
