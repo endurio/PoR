@@ -35,9 +35,10 @@ contract DataStructure {
     // com-rate is [0;4,294,967,296)
     uint    constant COM_RATE_UNIT      = 1e9;
 
-    uint64  constant COM_RATE_UNIT  = 1 << 32;
-    uint    constant MAX_UINT32     = (1<<32)-1;
-    uint    constant MAX_UINT64     = (1<<64)-1;
+    // cut-back rate is [0;1e9]
+    uint    constant CUTBACK_RATE_UNIT      = 1e9;
+    uint    constant CUTBACK_RATE_CUSTOM    = 1<<31;    // or any value > CUTBACK_RATE_UNIT
+    uint    constant CUTBACK_RATE_MASK      = (1<<30)-1;
 
     // events
     event GlobalConfig(uint comRate, uint levelStep);
@@ -90,7 +91,7 @@ contract DataStructure {
         address indexed payee,
         uint            value
     );
-    
+
     /**
      * we don't do that here
      */
@@ -123,7 +124,11 @@ struct Node {
     bytes32     parent;
     address     prevParent;
     uint64      cooldownEnd;
-    uint32      cutBackRate;// cutBack = commission * cutBackRate / MAX_UINT32
+    uint32      cutbackRate;        // cutBack = commission * cutbackRate / CUTBACK_RATE_UNIT
+
+    address     cbtAddress;         // cutBackToken.transferFrom(noder, miner, tokenAmount)
+    uint8       cbtRateDecimals;
+    uint88      cbtRate;            // cutBackTokenAmount = commission * cutBackTokenRate / 10**cutBackTokenRateDecimals
 }
 
 struct Reward {

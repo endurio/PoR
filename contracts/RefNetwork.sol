@@ -62,7 +62,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
                 rent = SafeMath.sub(rent, CapMath.checkedScale(rent, elapsed%RENT_CD, RENT_CD*2), "decaying rent overflow");
                 if (rent == 0) {
                     rent = 1;   // smallest value
-    }
+                }
                 node.rent = uint192(rent);
                 expiration = time.blockTimestamp(); // clear the expired rent
             }
@@ -97,7 +97,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         // return (rent, expiration);
     }
 
-    /// some of the balance will be lost due to rounding up
+    /// some of the balance will be lost due to rounding
     function setRent(uint newRent) external returns (uint rent, uint expiration) {
         require(newRent > 0, "!rent");
         Node storage node = nodes[msg.sender];
@@ -105,7 +105,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         if (expiration == 0) {  // uninitialized node
             node.rent = uint192(newRent);
             return (newRent, expiration);
-    }
+        }
         require(!time.reach(expiration), "expired");        // deposit due rent and some more first
         rent = node.rent;
         require(newRent / 2 <= rent, "new rent too high");
@@ -118,11 +118,37 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         rent = newRent; // return (newRent, expiration);
     }
 
+    function setCutbackRate(
+        address token,
+        uint rate,
+        uint decimals
+    ) external {
+        Node storage node = nodes[msg.sender];
+        if (token != address(0x0)) {
+            require(rate < 1<<88, "custom cutback rate exceeds 88 bits");
+            require(decimals < 1<<8, "custom cutback decimals exceeds 8 bits");
+            node.cutbackRate = uint32(CUTBACK_RATE_CUSTOM);   // set the custom token flag
+            node.cbtAddress = token;
+            node.cbtRate = uint88(rate);
+            node.cbtRateDecimals = uint8(decimals);
+            return;
+        }
+        require(rate <= CUTBACK_RATE_UNIT, "native cutback rate exceeds 1e9");
+        uint cutbackRate = node.cutbackRate;
+        bool cbt = cutbackRate > CUTBACK_RATE_UNIT;  // use the highest bit for cbt flag
+        if (cbt) {  // clear the custom token
+            delete node.cbtAddress;
+            delete node.cbtRate;
+            delete node.cbtRateDecimals;
+        }
+        node.cutbackRate = uint32(rate);
+    }
+
     function getNodeDetails(address noder) external view returns (
         uint    rent,
         uint    expiration,
         uint    cooldownEnd,
-        uint    cutBackRate,
+        uint    cutbackRate,
         address parent,
         uint    duration,
         uint    maturedTime,
@@ -132,7 +158,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         rent = node.rent;
         expiration = node.expiration;
         cooldownEnd = node.cooldownEnd;
-        cutBackRate = node.cutBackRate;
+        cutbackRate = node.cutbackRate;
         (parent, duration, maturedTime) = node.parent.unpack();
         prevParent = node.prevParent;
     }
@@ -146,91 +172,121 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         bool skipCommission
     ) external override {
         require(msg.sender == address(this), "!internal");  // must be called from other implemenetation
-        uint commission = CapMath.scaleDown(amount, config.comRate, COM_RATE_UNIT);
-        uint claimable = _claimReward(memoHash, payer, amount+commission);
-        if (claimable < amount) {
-            amount = claimable;
-            commission = 0;
-        } else {
-            commission = claimable - amount;
+
+        { // stack too deep
+        (uint rewarded, bool empty) = _payByBrand(memoHash, payer, miner, amount);
+        emit Rewarded(memoHash, payer, miner, rewarded);
+        if (empty) {
+            return;  // brand has no more fund to pay for commission
         }
+        }
+
+        uint uiSeed = uint(keccak256(abi.encodePacked(memoHash, seed)));
+
+        // there's always 1/32 chance that the raw commission will go to root
+        if (uiSeed % ROOT_COM_RATE == 0) {
+            // reuse amount for actual rewarded amount
+            (amount,) = _payByBrand(memoHash, payer, root, amount);
+            emit CommissionRoot(payer, miner, amount);
+            return;
+        }
+
+        if (skipCommission) {
+            emit CommissionSkip(payer, miner, amount);
+            return;
+        }
+
+        uint commission = CapMath.checkedScale(amount, config.comRate, COM_RATE_UNIT);
         if (commission > 0) {
-            seed = keccak256(abi.encodePacked(memoHash, seed));
-            uint cutBack = _payCommission(miner, payer, commission, uint(seed));
-            amount += cutBack;
+            // DEBUG & TEST //
+            // Use config.comRate as an addition entropy for statistical testing.
+            // Ideally, this should be remove in production, but it doesn't hurt if we don't.
+            uiSeed = uint(keccak256(abi.encodePacked(uiSeed, config.comRate)));
+
+            _commitCommission(memoHash, payer, miner, commission, uiSeed);
         }
-        if (payer == address(0x0)) {
-            _mint(miner, amount);
-        } else {
-            _transfer(address(this), miner, amount);
-        }
-        emit Rewarded(memoHash, payer, miner, amount);
     }
 
-    /**
-     * take the token from the brand (or mint for ENDURIO) to pay for miner and the network
-     */
-    function _claimReward(
+    function _payByBrand(
         bytes32 memoHash,
         address payer,
+        address payee,
         uint    amount
-    ) internal returns (uint) {
-        if (memoHash == ENDURIO_MEMO_HASH) {
-            // _mint(address(this), amount);
-            return amount;
+    ) internal returns (uint, bool) {
+        if (payer == address(0x0)) {
+            _mint(payee, amount);
+            return (amount, false);
         }
+
         Brand storage brand = brands[memoHash][payer];
         uint balance = brand.balance;
         if (amount < balance) {
             brand.balance -= amount; // safe
-            return amount;
+            _transfer(address(this), payee, amount);
+            return (amount, false);
         }
         delete brands[memoHash][payer];
         emit Deactive(memoHash, payer);
-        return balance;
+        _transfer(address(this), payee, balance);
+        return (balance, true);    // no more balance to pay
     }
 
-    function _payCommission(
-        address miner,
+    function _commitCommission(
+        bytes32 memoHash,
         address payer,
-        uint amount,
-        uint seed
-    ) internal returns (uint cutBackCommission) {
-        // there's always 1/32 chance that the commission will go to root
-        if (seed % ROOT_COM_RATE == 0) {
-            if (payer == address(0x0)) {
-                _mint(root, amount);
-            } else {
-                _transfer(address(this), root, amount);
-            }
-            // this short-circuit slews the CommissionLost rate below
-            emit CommissionRoot(payer, miner, amount);
-            return 0;
-        }
-
-        // TODO: short circuit for no parent and no balance
+        address miner,
+        uint    amount,
+        uint    seed
+    ) internal {
+        // TODO: lazy evaluation this
+        // seed = uint(keccak256(abi.encodePacked(seed))); // rehash
         int128 x = int128(seed & MAX_UINT64);   // random 64x64 number in [0,1)
         uint distance = x.log_2().neg().muluc(config.levelStep);
 
-        Node storage node = nodes[miner];
-        address noder;
-        for (uint rent; (rent = node.getRent()) < distance; node = nodes[noder]) {
-            distance -= rent;
-            noder = node.pickParent(seed);
-            if (noder == address(0x0)) {
-                emit CommissionLost(payer, miner, amount);
-                return 0;   // no commission paid, no cut back
+        address noder = miner;
+        while(true) {
+            Node storage node = nodes[noder];
+            uint rent = node.getRent();
+            // short-circuit for zero rent
+            if (distance <= rent) {
+                break;  // found it
             }
+            if (noder == address(0x0)) {
+                // no more parent, commission lost and no cut back
+                emit CommissionLost(payer, miner, amount);
+                return;
+            }
+            distance -= rent;   // safe
+            noder = node.pickParent(seed);
         }
 
-        uint cutBack = CapMath.scaleDown(amount, node.cutBackRate, MAX_UINT32);
-        if (payer == address(0x0)) {
-            _mint(noder, amount-cutBack);
-        } else {
-            _transfer(address(this), noder, amount-cutBack);
+        // reuse amount for actual rewarded amount
+        (amount,) = _payByBrand(memoHash, payer, noder, amount);
+        emit CommissionPaid(payer, miner, noder, amount);
+
+        // skip self cut-back
+        if (noder == miner) {
+            return;
         }
-        // emit Commission(noder, payer, miner)
-        return cutBack;
+
+        Node storage node = nodes[noder];
+
+        uint cutbackRate = node.cutbackRate;
+        bool cbt = cutbackRate > CUTBACK_RATE_UNIT;
+        if (cbt) {
+            // reuse amount for token cutback amount
+            amount = CapMath.checkedScale(amount, node.cbtRate, 10**uint(node.cbtRateDecimals));
+            if (amount > 0) {
+                IERC20(node.cbtAddress).transferFrom(noder, miner, amount); // failure will revert the whole claim tx
+            }
+        } else {
+            cutbackRate &= CUTBACK_RATE_MASK;                   // rate only use the lowest 30 bits
+            // reuse amount for cutBack
+            amount = CapMath.checkedScale(amount, cutbackRate, CUTBACK_RATE_UNIT);
+            if (amount > 0) {
+                _transfer(noder, miner, amount);
+            }
+        }
     }
 }
 

@@ -44,6 +44,7 @@ contract Endurio is DataStructure, Token {
         impls[0xb6b55f25] = implRefNetwork;     // deposit
         impls[0x2e1a7d4d] = implRefNetwork;     // withdraw
         impls[0xb12a6852] = implRefNetwork;     // setRent
+        impls[0xdffb35bb] = implRefNetwork;     // setCutbackRate
         impls[0xbafb3581] = implRefNetwork;     // getNodeDetails
         impls[0x09812fe2] = implRefNetwork;     // reward
     }
@@ -121,10 +122,14 @@ contract Endurio is DataStructure, Token {
         root = newRoot;
     }
 
-    function setGlobalConfig(uint32 comRate, uint224 levelStep) external {
+    function setGlobalConfig(uint comRate, uint levelStep) external {
         require(msg.sender == root || msg.sender == owner, "!owner");
-        config.comRate = comRate;
-        config.levelStep = levelStep;
+        if (comRate < 1<<32) {
+            config.comRate = uint32(comRate);
+        }
+        if (levelStep < 1<<224) {
+            config.levelStep = uint224(levelStep);
+        }
         emit GlobalConfig(comRate, levelStep);
     }
 
