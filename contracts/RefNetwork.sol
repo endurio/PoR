@@ -148,18 +148,24 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     }
 
     function getNodeDetails(address noder) external view returns (
+        address parent,
         uint    rent,
         uint    expiration,
         uint    cooldownEnd,
         uint    cutbackRate,
-        address parent
+        address cbtAddress,
+        uint    cbtRateDecimals,
+        uint    cbtRate
     ) {
         Node storage node = nodes[noder];
+        parent = node.parent;
         rent = node.rent;
         expiration = node.expiration;
         cooldownEnd = node.cooldownEnd;
         cutbackRate = node.cutbackRate;
-        parent = node.parent;
+        cbtAddress = node.cbtAddress;
+        cbtRateDecimals = node.cbtRateDecimals;
+        cbtRate = node.cbtRate;
     }
 
     function reward(
