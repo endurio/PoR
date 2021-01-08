@@ -26,7 +26,7 @@ contract BrandMarket is DataStructure, Token, Initializable {
      */
     function activate(
         bytes   calldata memo,
-        uint    fund,           // ENDR to deposit
+        uint    fund,           // END to deposit
         uint    payRate,
         uint    duration        // (optional) default duration of 2 weeks
     ) external {
