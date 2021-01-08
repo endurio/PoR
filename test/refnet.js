@@ -96,6 +96,20 @@ contract("RefNetwork", accounts => {
   })
 
   describe('sandbox', () => {
+    it("setRent and deposit", async() => {
+      const ss = await snapshot.take()
+      await expectRevert(instRN.deposit(1, {from: acc4}), '!rent')
+      expectEvent(await instRN.setRent(13, 100, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '91' })
+
+      await instRN.setRent(9, 45, {from: acc4})
+      const details = await instRN.getNodeDetails(acc4)
+      expect(details.rent).is.bignumber.equal(new BN(9))
+      const after = details.rent.mul(details.expiration.sub(await time.latest()))
+      expect(after).is.bignumber.at.most('135').at.least('126')
+
+      await snapshot.revert(ss)
+    })
+
     it("over deposit with rent = 1", async() => {
       const ss = await snapshot.take()
       await instRN.setRent(1, 0, {from: acc4})
