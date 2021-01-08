@@ -98,14 +98,14 @@ contract("RefNetwork", accounts => {
   describe('sandbox', () => {
     it("over deposit with rent = 1", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(1, {from: acc4})
+      await instRN.setRent(1, 0, {from: acc4})
       if (true) {
         await expectRevert(instRN.deposit(400+'0'.repeat(8)+'1', {from: acc4}), 'exceeds balance')
       } else {  // remove the _burn line in RefNetwork.deposit to test this block
-        await instRN.setRent(1, {from: acc4})
+        await instRN.setRent(1, 0, {from: acc4})
         await expectRevert(instRN.deposit('115792089237316195423570985008687907853269984665640564039457584007913129639935', {from: acc4}), 'addition overflow')
         await expectRevert(instRN.deposit('18446744073709551615', {from: acc4}), 'expiration overflow ui64')
-        await instRN.setRent(2, {from: acc4})
+        await instRN.setRent(2, 0, {from: acc4})
         await instRN.deposit('18446744073709551615', {from: acc4})
       }
       await snapshot.revert(ss)
@@ -113,7 +113,7 @@ contract("RefNetwork", accounts => {
 
     it("exact deposit and withdraw with rent = 1", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(1, {from: acc4})
+      await instRN.setRent(1, 0, {from: acc4})
       expectEvent(await instRN.deposit('613', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '613' })
       expectEvent(await instRN.deposit('13', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '13' })
       await expectRevert(instRN.withdraw(0, {from: acc4}), '!amount')
@@ -129,7 +129,7 @@ contract("RefNetwork", accounts => {
 
     it("truncated deposit with rent > 1", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(13, {from: acc4})
+      await instRN.setRent(13, 0, {from: acc4})
       expectEvent(await instRN.deposit('130', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '130' })
       expectEvent(await instRN.deposit('136', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '130' })
       await expectRevert(instRN.withdraw(0, {from: acc4}), '!amount')
@@ -147,7 +147,7 @@ contract("RefNetwork", accounts => {
 
     it("rent half paid", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(613, {from: acc4})
+      await instRN.setRent(613, 0, {from: acc4})
       expectEvent(await instRN.deposit('61300', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '61300' })  // +100s
       { // snapshot scope
         const ss = await snapshot.take()
@@ -178,7 +178,7 @@ contract("RefNetwork", accounts => {
 
     it("rent fully paid", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(613, {from: acc4})
+      await instRN.setRent(613, 0, {from: acc4})
       expectEvent(await instRN.deposit('61300', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '61300' })  // +100s
       { // snapshot scope
         const ss = await snapshot.take()
@@ -203,7 +203,7 @@ contract("RefNetwork", accounts => {
 
     it("expired rent exponential decay", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(1000, {from: acc4})
+      await instRN.setRent(1000, 0, {from: acc4})
       expectEvent(await instRN.deposit('100000', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '100000' })  // +100s
       await time.increase(100) // -100s
 
@@ -254,7 +254,7 @@ contract("RefNetwork", accounts => {
     })
 
     it("set rent to zero", async() => {
-      await expectRevert(instRN.setRent(0, {from: acc4}), '!rent')
+      await expectRevert(instRN.setRent(0, 0, {from: acc4}), '!rent')
     })
 
     it("set rent first time", async() => {
@@ -273,7 +273,7 @@ contract("RefNetwork", accounts => {
       await setRentAndCheckBalance(100, acc4)
       expectEvent(await instRN.deposit('100', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '100' })
       await time.increase(100);
-      await expectRevert(instRN.setRent(50, {from: acc4}), 'expired')
+      await expectRevert(instRN.setRent(50, 0, {from: acc4}), 'expired')
     })
 
     it("reactive an expired rent", async() => {
@@ -281,7 +281,7 @@ contract("RefNetwork", accounts => {
     })
 
     it("new rent too high", async() => {
-      await expectRevert(instRN.setRent(202, {from: acc4}), 'new rent too high')
+      await expectRevert(instRN.setRent(202, 0, {from: acc4}), 'new rent too high')
     })
 
     it("double the rent", async() => {
@@ -290,9 +290,9 @@ contract("RefNetwork", accounts => {
     })
 
     it("set rent on cool down", async() => {
-      await expectRevert(instRN.setRent(100, {from: acc4}), 'cooldown')
+      await expectRevert(instRN.setRent(100, 0, {from: acc4}), 'cooldown')
       await time.increase(time.duration.days(6))
-      await expectRevert(instRN.setRent(136, {from: acc4}), 'cooldown')
+      await expectRevert(instRN.setRent(136, 0, {from: acc4}), 'cooldown')
     })
 
     it("half the rent", async() => {
@@ -302,7 +302,7 @@ contract("RefNetwork", accounts => {
 
     it("exhaust the balance", async() => {
       await instRN.withdraw('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', {from: acc4})
-      await expectRevert(instRN.setRent(10000, {from: acc4}), 'expired')
+      await expectRevert(instRN.setRent(10000, 0, {from: acc4}), 'expired')
     })
 
     it("reactive an exhausted rent", async() => {
@@ -310,16 +310,16 @@ contract("RefNetwork", accounts => {
     })
 
     it("set the rent after reactive", async() => {
-      await expectRevert(instRN.setRent(136, {from: acc4}), 'cooldown')
+      await expectRevert(instRN.setRent(136, 0, {from: acc4}), 'cooldown')
     })
 
     async function setRentAndCheckBalance(newRent, acc4) {
       let details = await instRN.getNodeDetails(acc4)
       if (details.expiration.isZero()) {  // uninitialized node
-        return instRN.setRent(newRent, {from: acc4})
+        return instRN.setRent(newRent, 0, {from: acc4})
       }
       const before = details.rent.mul(details.expiration.sub(await time.latest()))
-      await instRN.setRent(newRent, {from: acc4})
+      await instRN.setRent(newRent, 0, {from: acc4})
       details = await instRN.getNodeDetails(acc4)
       expect(details.rent).is.bignumber.equal(new BN(newRent))
       const after = details.rent.mul(details.expiration.sub(await time.latest()))

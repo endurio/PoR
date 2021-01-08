@@ -49,6 +49,10 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
      * @param amount is rounded down to multiple of rent
      */
     function deposit(uint amount) external returns (uint rent, uint expiration) {
+        return _deposit(amount);
+    }
+
+    function _deposit(uint amount) internal returns (uint rent, uint expiration) {
         require(amount > 0, "!amount");
         Node storage node = nodes[msg.sender];
         (rent, expiration) = (node.rent, node.expiration);
@@ -101,7 +105,14 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     }
 
     /// some of the balance will be lost due to rounding
-    function setRent(uint newRent) external returns (uint rent, uint expiration) {
+    function setRent(uint newRent, uint amount) external returns (uint rent, uint expiration) {
+        (rent, expiration) = _setRent(newRent);
+        if (amount > 0) {
+            return _deposit(amount);
+        }
+    }
+
+    function _setRent(uint newRent) internal returns (uint rent, uint expiration) {
         require(newRent > 0, "!rent");
         Node storage node = nodes[msg.sender];
         expiration = node.expiration;
