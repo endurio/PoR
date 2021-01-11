@@ -79,8 +79,8 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
             if (elapsed > 0) {
                 // expired and decaying
                 rent = _getDecayingRent(rent, elapsed);
-                }
             }
+        }
 
         if (newRent != rent) {
             // rent changed
@@ -90,10 +90,10 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
                 if (newRent > rent*2 || !time.reach(node.cooldownEnd)) {
                     require(escalate, "!escalate");
                     fee = SafeMath.mul(fee, 3);
-        }
+                }
                 balance = SafeMath.sub(balance, fee, "balance < upgrade fee");
                 node.cooldownEnd = uint64(time.next(RENT_CD));   // schedule the next slow upgrade
-    }
+            }
             rent = newRent;
         }
 
@@ -259,7 +259,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
             Node storage node = nodes[noder];
             uint rent = node.getRent();
             // short-circuit for zero rent
-            if (distance <= rent) {
+            if (distance < rent) {
                 break;  // found it
             }
             if (noder == address(0x0)) {
