@@ -112,8 +112,7 @@ contract("RefNetwork: CutBack", accounts => {
       const miner = txs[txHash].miner
       await instRN.attach(acc4, {from: miner});
   
-      await instRN.setRent(decShift(10, 9), {from: acc4})
-      await instRN.deposit(100000000000, {from: acc4})
+      await instRN.update(100000000000, 10000, true, {from: acc4})
 
       { // snapshot scope
         const ss = await snapshot.take()
@@ -144,8 +143,7 @@ contract("RefNetwork: CutBack", accounts => {
       const miner = txs[txHash].miner
       await instRN.attach(acc4, {from: miner});
   
-      await instRN.setRent(decShift(10, 9), {from: acc4})
-      await instRN.deposit(100000000000, {from: acc4})
+      await instRN.update(100000000000, 10000, true, {from: acc4})
 
       // abuse the END as the cutback token
       const tokenAddress = inst.address
@@ -176,7 +174,7 @@ contract("RefNetwork: CutBack", accounts => {
         await instRN.setCutbackRate(tokenAddress, 1, 0, {from: acc4})
 
         await expectRevert(utils.claim(commitReceipt), 'transfer amount exceeds allowance')
-        await inst.approve(inst.address, 123456798, {from: acc4});
+        await inst.approve(inst.address, 123, {from: acc4});
         await expectRevert(utils.claim(commitReceipt), 'transfer amount exceeds allowance')
 
         await inst.approve(inst.address, HIGHEST_ONE, {from: acc4});
@@ -199,8 +197,7 @@ contract("RefNetwork: CutBack", accounts => {
       await utils.timeToClaim(commitTxs[commitTxs.length-1])
 
       const miner = txs[txHash].miner
-      await instRN.setRent(decShift(10, 9), {from: miner})
-      await instRN.deposit(100000000000, {from: miner})
+      await instRN.update(100000000000, 10000, true, {from: miner})
 
       const cutbackRate = 0.613
       await instRN.setCutbackRate(ZERO_ADDRESS, decShift(cutbackRate, 9), 0, {from: miner})

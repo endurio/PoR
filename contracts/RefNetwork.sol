@@ -22,6 +22,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
+    uint    constant MAX_UINT192        = (1<<192)-1;
     uint    constant MAX_UINT64         = (1<<64)-1;
 
     uint    constant ROOT_COM_RATE      = 32;       // root commission chance = 1/32
@@ -44,92 +45,107 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         }
     }
 
-    /**
-     * deposit and extend the node expiration.
-     * @param amount is rounded down to multiple of rent
-     */
-    function deposit(uint amount) external returns (uint rent, uint expiration) {
-        return _deposit(amount);
+    function update(int fund, uint newRent, bool escalate) external returns (uint rent, uint expiration, uint fee) {
+        require(newRent <= MAX_UINT192, "newRent overflow ui192");
+
+        Node storage node = nodes[msg.sender];
+        (rent, expiration) = (node.rent, node.expiration);      // SLOAD
+
+        uint balance = time.remain(expiration) * rent;
+        if (fund > 0) {
+            uint amount = uint(fund);
+            _burn(msg.sender, amount);
+            balance = SafeMath.add(balance, amount);
+        } else if (fund < 0) {
+            require(balance > 0, "!balance");
+            uint amount = uint(-fund);
+            if (balance < amount) {
+                // empty the node balance
+                amount = balance;
+            }
+            _mint(msg.sender, amount);
+            balance -= amount;   // safe
+        } else /* fund == 0 */ {
+            require(newRent > 0, "noop");
+        }
+
+        if (newRent == 0) {
+            newRent = rent; // rent unchanged
+        }
+
+        if (expiration > 0) {
+            // initialized
+            uint elapsed = time.elapse(expiration);
+            if (elapsed > 0) {
+                // expired and decaying
+                rent = _getDecayingRent(rent, elapsed);
+                }
+            }
+
+        if (newRent != rent) {
+            // rent changed
+            if (newRent > rent) {
+                // upgrade
+                fee = SafeMath.mul(newRent-rent, RENT_CD/2); // safe
+                if (newRent > rent*2 || !time.reach(node.cooldownEnd)) {
+                    require(escalate, "!escalate");
+                    fee = SafeMath.mul(fee, 3);
+        }
+                balance = SafeMath.sub(balance, fee, "balance < upgrade fee");
+                node.cooldownEnd = uint64(time.next(RENT_CD));   // schedule the next slow upgrade
+    }
+            rent = newRent;
+        }
+
+        require(rent > 0, "!rent");
+        expiration = time.next(balance / rent);
+        // discard posible remainder of balance % rent
+
+        require(expiration <= MAX_UINT64, "expiration overflow ui64");
+
+        (node.rent, node.expiration) = (uint192(rent), uint64(expiration));  // SSTORE
     }
 
-    function _deposit(uint amount) internal returns (uint rent, uint expiration) {
-        require(amount > 0, "!amount");
-        Node storage node = nodes[msg.sender];
-        (rent, expiration) = (node.rent, node.expiration);
-        require(rent > 0, "!rent");
-        if (expiration == 0) {
-            expiration = time.blockTimestamp(); // initialize a rent
-        } else {
+    function query(address noder) external view returns (
+        address parent,
+        uint    rent,
+        uint    expiration,
+        uint    balance,
+        uint    decayingRent,
+        uint    cooldownEnd,
+        uint    cutbackRate,
+        address cbtAddress,
+        uint    cbtRateDecimals,
+        uint    cbtRate
+    ) {
+        Node storage node = nodes[noder];
+        parent = node.parent;
+        rent = node.rent;
+        expiration = node.expiration;
+        balance = rent * time.remain(expiration);
+        decayingRent = rent;
+        if (expiration > 0) {
+            // initialized
             uint elapsed = time.elapse(expiration);
-            if (elapsed > 0) {  // expired
-                // newRent = (rent/2**(elapsed/CD))*(1-elapsed%CD/CD/2)
-                // exponential decay over weeks
-                rent >>= elapsed/RENT_CD;
-                // linear decay from 1 to 0.5 during the week
-                rent = SafeMath.sub(rent, CapMath.checkedScale(rent, elapsed%RENT_CD, RENT_CD*2), "decaying rent overflow");
-                if (rent == 0) {
-                    rent = 1;   // smallest value
-                }
-                node.rent = uint192(rent);
-                expiration = time.blockTimestamp(); // clear the expired rent
+            if (elapsed > 0) {
+                // expired and decaying
+                decayingRent = _getDecayingRent(rent, elapsed);    
             }
         }
-        uint duration = amount / rent;
-        require(duration > 0, "!duration");
-        _burn(msg.sender, duration*rent);   // safe
-        expiration = SafeMath.add(expiration, duration);             // new balance too high for current rent
-        require(expiration <= MAX_UINT64, "expiration overflow ui64");  // new balance too high for current rent
-        node.expiration = uint64(expiration);
-        // return (rent, expiration);
+        cooldownEnd = node.cooldownEnd;
+        cutbackRate = node.cutbackRate;
+        cbtAddress = node.cbtAddress;
+        cbtRateDecimals = node.cbtRateDecimals;
+        cbtRate = node.cbtRate;
     }
 
-    /**
-     * withraw and contract the node expiration, empty the balance on over-withdraw
-     * @param amount is rounded down to multiple of rent
-     */
-    function withdraw(uint amount) external returns (uint rent, uint expiration) {
-        require(amount > 0, "!amount");
-        Node storage node = nodes[msg.sender];
-        (rent, expiration) = (node.rent, node.expiration);
-        require(rent > 0, "!rent");
-        uint duration = amount / rent;
-        require(duration > 0, "!duration");
-        uint remain = time.remain(expiration);
-        require(remain > 0, "expired");
-        if (duration > remain) {
-            duration = remain;  // over withdraw, exhaust the balance instead of revert
-        }
-        node.expiration = uint64(SafeMath.sub(expiration, duration));   // overflowable
-        _mint(msg.sender, duration*rent);
-        // return (rent, expiration);
-    }
-
-    /// some of the balance will be lost due to rounding
-    function setRent(uint newRent, uint amount) external returns (uint rent, uint expiration) {
-        (rent, expiration) = _setRent(newRent);
-        if (amount > 0) {
-            return _deposit(amount);
-        }
-    }
-
-    function _setRent(uint newRent) internal returns (uint rent, uint expiration) {
-        require(newRent > 0, "!rent");
-        Node storage node = nodes[msg.sender];
-        expiration = node.expiration;
-        if (expiration == 0) {  // uninitialized node
-            node.rent = uint192(newRent);
-            return (newRent, expiration);
-        }
-        require(!time.reach(expiration), "expired");        // deposit due rent and some more first
-        rent = node.rent;
-        require(newRent / 2 <= rent, "new rent too high");
-        require(time.reach(node.cooldownEnd), "cooldown");
-        node.cooldownEnd = uint64(time.next(RENT_CD));  // overflowable: unexploitable
-        uint remain = rent * time.remain(expiration);   // unoverflowable: ui192 * ui64
-        expiration = time.next(remain / newRent);
-        require(expiration <= MAX_UINT64, "expiration overflow ui64");   // newRent too low for current remain balance
-        (node.rent, node.expiration) = (uint192(newRent), uint64(expiration));
-        rent = newRent; // return (newRent, expiration);
+    /// decayinRent = (rent/2**(elapsed/CD))*(1-elapsed%CD/CD/2)
+    function _getDecayingRent(uint rent, uint elapsed) internal pure returns (uint) {
+        // exponential decay over weeks
+        rent >>= elapsed/RENT_CD;
+        // linear decay from 1 to 0.5 during the week
+        uint weekDecaying = CapMath.checkedScale(rent, elapsed%RENT_CD, RENT_CD*2);
+        return SafeMath.sub(rent, weekDecaying, "decaying rent overflow");
     }
 
     function setCutbackRate(
@@ -156,27 +172,6 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
             delete node.cbtRateDecimals;
         }
         node.cutbackRate = uint32(rate);
-    }
-
-    function getNodeDetails(address noder) external view returns (
-        address parent,
-        uint    rent,
-        uint    expiration,
-        uint    cooldownEnd,
-        uint    cutbackRate,
-        address cbtAddress,
-        uint    cbtRateDecimals,
-        uint    cbtRate
-    ) {
-        Node storage node = nodes[noder];
-        parent = node.parent;
-        rent = node.rent;
-        expiration = node.expiration;
-        cooldownEnd = node.cooldownEnd;
-        cutbackRate = node.cutbackRate;
-        cbtAddress = node.cbtAddress;
-        cbtRateDecimals = node.cbtRateDecimals;
-        cbtRate = node.cbtRate;
     }
 
     function reward(

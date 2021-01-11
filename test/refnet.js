@@ -1,4 +1,3 @@
-require('it-each')({ testPerIteration: true });
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
@@ -26,6 +25,10 @@ const FOOBAR_HEX = '0x'+FOOBAR.toString('hex');
 const FOOBAR_HASH = web3.utils.keccak256(FOOBAR);
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+const WEEK = 604800;
+const UPGRADE = WEEK/2;
+const ESCALATE = UPGRADE*3;
 
 contract("RefNetwork", accounts => {
   const acc1 = accounts[accounts.length-1]
@@ -98,93 +101,91 @@ contract("RefNetwork", accounts => {
   describe('sandbox', () => {
     it("setRent and deposit", async() => {
       const ss = await snapshot.take()
-      await expectRevert(instRN.deposit(1, {from: acc4}), '!rent')
-      expectEvent(await instRN.setRent(13, 100, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '91' })
+      await expectRevert(instRN.update(1, 0, false, {from: acc4}), '!rent')
+      await expectRevert(instRN.update(100, 13, false, {from: acc4}), '!escalate')
+      await expectRevert(instRN.update(100, 13, true, {from: acc4}), 'balance < upgrade fee')
+      await expectRevert(instRN.update(10, -1, true, {from: acc4}), 'newRent overflow ui192')
+      expectEvent(await instRN.update(ESCALATE*13+100, 13, true, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: (ESCALATE*13+100).toString() })
 
-      await instRN.setRent(9, 45, {from: acc4})
-      const details = await instRN.getNodeDetails(acc4)
+      await instRN.update(45, 9, false, {from: acc4})
+      const details = await instRN.query(acc4)
       expect(details.rent).is.bignumber.equal(new BN(9))
       const after = details.rent.mul(details.expiration.sub(await time.latest()))
-      expect(after).is.bignumber.at.most('135').at.least('126')
+      expect(after).is.bignumber.at.most('135').at.least('117')
 
       await snapshot.revert(ss)
     })
 
     it("over deposit with rent = 1", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(1, 0, {from: acc4})
       if (true) {
-        await expectRevert(instRN.deposit(400+'0'.repeat(8)+'1', {from: acc4}), 'exceeds balance')
+        await expectRevert(instRN.update(400+'0'.repeat(8)+'1', 1, false, {from: acc4}), 'exceeds balance')
       } else {  // remove the _burn line in RefNetwork.deposit to test this block
-        await instRN.setRent(1, 0, {from: acc4})
-        await expectRevert(instRN.deposit('115792089237316195423570985008687907853269984665640564039457584007913129639935', {from: acc4}), 'addition overflow')
-        await expectRevert(instRN.deposit('18446744073709551615', {from: acc4}), 'expiration overflow ui64')
-        await instRN.setRent(2, 0, {from: acc4})
-        await instRN.deposit('18446744073709551615', {from: acc4})
+        await expectRevert(instRN.update('115792089237316195423570985008687907853269984665640564039457584007913129639935', 1, false, {from: acc4}), 'addition overflow')
+        await expectRevert(instRN.update('18446744073709551615', 1, false, {from: acc4}), 'expiration overflow ui64')
+        await instRN.update(0, 2, false, {from: acc4})
+        await instRN.update('18446744073709551615', 0, false, {from: acc4})
       }
       await snapshot.revert(ss)
     })
 
     it("exact deposit and withdraw with rent = 1", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(1, 0, {from: acc4})
-      expectEvent(await instRN.deposit('613', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '613' })
-      expectEvent(await instRN.deposit('13', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '13' })
-      await expectRevert(instRN.withdraw(0, {from: acc4}), '!amount')
-      expectEvent(await instRN.withdraw('136', {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '136' })
+      expectEvent(await instRN.update(ESCALATE+613, 1, true, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: (ESCALATE+613).toString() })
+      expectEvent(await instRN.update(13, 0, false, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '13' })
+      await expectRevert(instRN.update(-0, 0, false, {from: acc4}), 'noop')
+      expectEvent(await instRN.update(-136, 0, false, {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '136' })
       {
-        const receipt = await instRN.withdraw('490', {from: acc4})
+        const receipt = await instRN.update(-490, 0, false, {from: acc4})
         expectEvent(receipt, 'Transfer', { from: ZERO_ADDRESS, to: acc4 })
         expect(receipt.logs.find(log => log.event === 'Transfer').args.value).is.bignumber.at.most('490')
       }
-      await expectRevert(instRN.withdraw(1, {from: acc4}), 'expired')
+      await expectRevert(instRN.update(-1, 0, false, {from: acc4}), '!balance')
       await snapshot.revert(ss)
     })
 
     it("truncated deposit with rent > 1", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(13, 0, {from: acc4})
-      expectEvent(await instRN.deposit('130', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '130' })
-      expectEvent(await instRN.deposit('136', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '130' })
-      await expectRevert(instRN.withdraw(0, {from: acc4}), '!amount')
-      await expectRevert(instRN.withdraw(12, {from: acc4}), '!duration')
-      expectEvent(await instRN.withdraw('14', {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '13' })
-      expectEvent(await instRN.withdraw('40', {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '39' })
+      expectEvent(await instRN.update(ESCALATE*13+130, 13, true, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: (ESCALATE*13+130).toString() })
+      expectEvent(await instRN.update(136, 0, false, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '136' }) // +130
+      await expectRevert(instRN.update(-0, 0, false, {from: acc4}), 'noop')
+      expectEvent(await instRN.update(-12, 0, false, {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '12' })  // -13
+      expectEvent(await instRN.update(-14, 0, false, {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '14' })  // -26
+      expectEvent(await instRN.update(-40, 0, false, {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '40' })  // -52
       {
-        const receipt = await instRN.withdraw('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', {from: acc4})
+        const receipt = await instRN.update('0x8000000000000000000000000000000000000000000000000000000000000000', 0, false, {from: acc4})
         expectEvent(receipt, 'Transfer', { from: ZERO_ADDRESS, to: acc4 })
-        expect(receipt.logs.find(log => log.event === 'Transfer').args.value).is.bignumber.at.most('208')
+        expect(receipt.logs.find(log => log.event === 'Transfer').args.value).is.bignumber.at.most('169') // 130+130-13-26-52
       }
-      await expectRevert(instRN.withdraw(13, {from: acc4}), 'expired')
+      await expectRevert(instRN.update(-1, 0, false, {from: acc4}), '!balance')
       await snapshot.revert(ss)
     })
 
     it("rent half paid", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(613, 0, {from: acc4})
-      expectEvent(await instRN.deposit('61300', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '61300' })  // +100s
+      expectEvent(await instRN.update(ESCALATE*613+61300, 613, true, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: (ESCALATE*613+61300).toString() })  // +100s
       { // snapshot scope
         const ss = await snapshot.take()
         await time.increase(50) // -50s
         // withdraw the rest of 50s
         {
-          const receipt = await instRN.withdraw(30650+613, {from: acc4})
+          const receipt = await instRN.update(-30650-613, 0, false, {from: acc4})
           expectEvent(receipt, 'Transfer', { from: ZERO_ADDRESS, to: acc4 })
           expect(receipt.logs.find(log => log.event === 'Transfer').args.value).is.bignumber.at.most('30650')
         }
-        await expectRevert(instRN.withdraw(613, {from: acc4}), 'expired')
+        await expectRevert(instRN.update(-1, 0, false, {from: acc4}), '!balance')
         await snapshot.revert(ss)
       }
       { // snapshot scope
         const ss = await snapshot.take()
         await time.increase(50) // -50s
-        expectEvent(await instRN.withdraw(18390, {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '18390' })
+        expectEvent(await instRN.update(-18390, 0, false, {from: acc4}), 'Transfer', { from: ZERO_ADDRESS, to: acc4, value: '18390' })
         {
-          const receipt = await instRN.withdraw(12260, {from: acc4})
+          const receipt = await instRN.update(-12260, 0, false, {from: acc4})
           expectEvent(receipt, 'Transfer', { from: ZERO_ADDRESS, to: acc4 })
           expect(receipt.logs.find(log => log.event === 'Transfer').args.value).is.bignumber.at.most('12260')
         }
-        await expectRevert(instRN.withdraw(613, {from: acc4}), 'expired')
+        await expectRevert(instRN.update(-1, 0, false, {from: acc4}), '!balance')
         await snapshot.revert(ss)
       }
       await snapshot.revert(ss)
@@ -192,24 +193,23 @@ contract("RefNetwork", accounts => {
 
     it("rent fully paid", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(613, 0, {from: acc4})
-      expectEvent(await instRN.deposit('61300', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '61300' })  // +100s
+      expectEvent(await instRN.update(ESCALATE*613+61300, 613, true, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: (ESCALATE*613+61300).toString() })  // +100s
       { // snapshot scope
         const ss = await snapshot.take()
         await time.increase(100) // -100s
         // withdraw the rest of 50s
-        await expectRevert(instRN.withdraw(613, {from: acc4}), 'expired')
+        await expectRevert(instRN.update(-613, 0, false, {from: acc4}), '!balance')
         await snapshot.revert(ss)
       }
       { // snapshot scope
         const ss = await snapshot.take()
         await time.increase(80) // -80s
         {
-          const receipt = await instRN.withdraw(12260, {from: acc4})
+          const receipt = await instRN.update(-12260, 0, false, {from: acc4})
           expectEvent(receipt, 'Transfer', { from: ZERO_ADDRESS, to: acc4 })
           expect(receipt.logs.find(log => log.event === 'Transfer').args.value).is.bignumber.at.most('12260')
         }
-        await expectRevert(instRN.withdraw(613, {from: acc4}), 'expired')
+        await expectRevert(instRN.update(-613, 0, false, {from: acc4}), '!balance')
         await snapshot.revert(ss)
       }
       await snapshot.revert(ss)
@@ -217,8 +217,7 @@ contract("RefNetwork", accounts => {
 
     it("expired rent exponential decay", async() => {
       const ss = await snapshot.take()
-      await instRN.setRent(1000, 0, {from: acc4})
-      expectEvent(await instRN.deposit('100000', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '100000' })  // +100s
+      expectEvent(await instRN.update(ESCALATE*1000+100000, 1000, true, {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: (ESCALATE*1000+100000).toString() })  // +100s
       await time.increase(100) // -100s
 
       await testDecayingRent(0, 1000);
@@ -229,16 +228,16 @@ contract("RefNetwork", accounts => {
       await testDecayingRent(time.duration.weeks(1), 500);
       await testDecayingRent(time.duration.weeks(2), 250);
       await testDecayingRent(time.duration.weeks(3), 125);
-      await testDecayingRent(time.duration.weeks(4), 63);
-      await testDecayingRent(time.duration.weeks(5), 32);
-      await testDecayingRent(time.duration.weeks(6), 16);
-        await testDecayingRent(time.duration.hours(1092), 13);
-      await testDecayingRent(time.duration.weeks(7), 8);
-      await testDecayingRent(time.duration.weeks(8), 4);
-      await testDecayingRent(time.duration.weeks(9), 2);
-      await testDecayingRent(time.duration.weeks(10), 1);
-      await testDecayingRent(time.duration.weeks(11), 1);
-      await testDecayingRent(time.duration.weeks(99), 1);
+      await testDecayingRent(time.duration.weeks(4), 62);
+      await testDecayingRent(time.duration.weeks(5), 31);
+      await testDecayingRent(time.duration.weeks(6), 15);
+        await testDecayingRent(time.duration.hours(1092), 12);
+      await testDecayingRent(time.duration.weeks(7), 7);
+      await testDecayingRent(time.duration.weeks(8), 3);
+      await testDecayingRent(time.duration.weeks(9), 1);
+      await testDecayingRent(time.duration.weeks(10), 0);
+      await testDecayingRent(time.duration.weeks(11), 0);
+      await testDecayingRent(time.duration.weeks(99), 0);
 
       await snapshot.revert(ss)
 
@@ -246,13 +245,20 @@ contract("RefNetwork", accounts => {
         const fund = new BN(100000)
         const ss = await snapshot.take()
         await time.increase(duration)
-        const res = await instRN.deposit.call(fund, {from: acc4})
-        expect(res.rent).is.bignumber.at.most(new BN(expectedRent)).at.least(new BN(expectedRent-1))
-        expect(res.rent.mul(res.expiration.sub(await time.latest()))).is.bignumber.at.most(fund).gt(fund.sub(res.rent))
-        await instRN.deposit(fund, {from: acc4})
-        const details = await instRN.getNodeDetails(acc4)
-        expect(details.rent).is.bignumber.at.most(new BN(expectedRent)).at.least(new BN(expectedRent-1))
-        expect(details.rent.mul(details.expiration.sub(await time.latest()))).is.bignumber.at.most(fund).gt(fund.sub(details.rent))
+        let details = await instRN.query(acc4)
+        if (details.decayingRent.isZero()) {
+          // completely decayed
+          await expectRevert(instRN.update(fund, 1, false, {from: acc4}), '!escalate')
+          await expectRevert(instRN.update(fund, 1, true, {from: acc4}), 'balance < upgrade fee')
+        } else {
+          const res = await instRN.update.call(fund, expectedRent, false, {from: acc4})
+          expect(res.rent).is.bignumber.equal(new BN(expectedRent))
+          expect(res.rent.mul(res.expiration.sub(await time.latest()))).is.bignumber.at.most(fund).gt(fund.sub(res.rent))
+          await instRN.update(fund, expectedRent, false, {from: acc4})
+          details = await instRN.query(acc4)
+          expect(details.rent).is.bignumber.equal(new BN(expectedRent))
+          expect(details.rent.mul(details.expiration.sub(await time.latest()))).is.bignumber.at.most(fund).gt(fund.sub(details.rent))
+        }
         await snapshot.revert(ss)
       }
     })
@@ -260,84 +266,118 @@ contract("RefNetwork", accounts => {
 
   describe('rent management', () => {
     it("deposit to uninitialized node", async() => {
-      await expectRevert(instRN.deposit(1, {from: acc4}), '!rent')
+      await expectRevert(instRN.update(1, 0, false, {from: acc4}), '!rent')
     })
 
     it("withdraw from uninitialized node", async() => {
-      await expectRevert(instRN.withdraw(1, {from: acc4}), '!rent')
+      await expectRevert(instRN.update(-1, 0, false, {from: acc4}), '!balance')
     })
 
     it("set rent to zero", async() => {
-      await expectRevert(instRN.setRent(0, 0, {from: acc4}), '!rent')
+      await expectRevert(instRN.update(0, 0, false, {from: acc4}), 'noop')
     })
 
-    it("set rent first time", async() => {
-      await setRentAndCheckBalance(13, acc4)
+    it("init a node", async() => {
+      await updateAndVerify({
+        fund: 300000000000,
+        newRent: 1300,
+        escalate: true,
+      }, {fee: ESCALATE*1300})
     })
 
-    it("set rent second time with no deposit", async() => {
-      await setRentAndCheckBalance(613, acc4)
+    it("escalate with no deposit", async() => {
+      await updateAndVerify({
+        newRent: 61300,
+        escalate: true,
+      }, {fee: ESCALATE*(61300-1300)})
     })
 
-    it("deposit zero to initialized node", async() => {
-      await expectRevert(instRN.deposit(0, {from: acc4}), '!amount')
+    it("downgrade with deposit", async() => {
+      await updateAndVerify({
+        fund: 1000000000,
+        newRent: 13600,
+      }, {fee: 0})
     })
 
-    it("set rent on expired", async() => {
-      await setRentAndCheckBalance(100, acc4)
-      expectEvent(await instRN.deposit('100', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '100' })
+    it("withdraw", async() => {
+      await updateAndVerify({
+        fund: -123456000,
+      }, {fee: 0})
+    })
+
+    it("deposit", async() => {
+      await updateAndVerify({
+        fund: 123000,
+      }, {fee: 0})
+    })
+
+    it("escalate and withdraw", async() => {
+      await updateAndVerify({
+        fund: -166880000000,
+        newRent: 100000,
+        escalate: true,
+      }, {fee: ESCALATE*(100000-13600)})
+    })
+
+    it("withdraw on expired", async() => {
       await time.increase(100);
-      await expectRevert(instRN.setRent(50, 0, {from: acc4}), 'expired')
+      await expectRevert(instRN.update(-1, 0, false, {from: acc4}), '!balance')
     })
 
     it("reactive an expired rent", async() => {
-      expectEvent(await instRN.deposit('300000000000', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '300000000000' })
+      await time.increase(4000000);
+      const before = await instRN.query(acc4)
+      await updateAndVerify({
+        fund: 100000000000,
+        newRent: 3000,
+        escalate: true,
+      }, {fee: ESCALATE*(3000-before.decayingRent.toNumber())})
     })
 
-    it("new rent too high", async() => {
-      await expectRevert(instRN.setRent(202, 0, {from: acc4}), 'new rent too high')
+    it("normal upgrade: double the rent", async() => {
+      await time.increase(WEEK);
+      await updateAndVerify({
+        newRent: 6000,
+      }, {fee: UPGRADE*3000})
     })
 
-    it("double the rent", async() => {
-      // the first setRent (on uninitialized node) does not trigger the rent cooldown, so this will passed
-      await setRentAndCheckBalance(200, acc4)
+    it("normal upgrade: +1 wei", async() => {
+      await time.increase(WEEK);
+      await updateAndVerify({
+        newRent: 6001,
+      }, {fee: UPGRADE})
     })
 
-    it("set rent on cool down", async() => {
-      await expectRevert(instRN.setRent(100, 0, {from: acc4}), 'cooldown')
-      await time.increase(time.duration.days(6))
-      await expectRevert(instRN.setRent(136, 0, {from: acc4}), 'cooldown')
+    it("normal upgrade: too soon", async() => {
+      await expectRevert(instRN.update(0, 6002, false, {from: acc4}), "!escalate")
+    })
+
+    it("normal upgrade: too high", async() => {
+      await time.increase(WEEK);
+      await expectRevert(instRN.update(0, 12003, false, {from: acc4}), "!escalate")
     })
 
     it("half the rent", async() => {
-      await time.increase(time.duration.days(1))
-      await setRentAndCheckBalance(100, acc4)
+      await updateAndVerify({
+        newRent: 6000,
+      }, {fee: 0})
     })
 
-    it("exhaust the balance", async() => {
-      await instRN.withdraw('0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF', {from: acc4})
-      await expectRevert(instRN.setRent(10000, 0, {from: acc4}), 'expired')
-    })
-
-    it("reactive an exhausted rent", async() => {
-      expectEvent(await instRN.deposit('3000', {from: acc4}), 'Transfer', { from: acc4, to: ZERO_ADDRESS, value: '3000' })
-    })
-
-    it("set the rent after reactive", async() => {
-      await expectRevert(instRN.setRent(136, 0, {from: acc4}), 'cooldown')
-    })
-
-    async function setRentAndCheckBalance(newRent, acc4) {
-      let details = await instRN.getNodeDetails(acc4)
-      if (details.expiration.isZero()) {  // uninitialized node
-        return instRN.setRent(newRent, 0, {from: acc4})
+    async function updateAndVerify({fund = 0, newRent = 0, escalate = false, acc: from = acc4}, {fee}) {
+      const before = await instRN.query(from)
+      const res = await instRN.update.call(fund, newRent, !!escalate, {from})
+      if (_.isUndefined(fee)) {
+        fee = res.fee
+      } else {
+        fee = new BN(fee)
+        expect(res.fee).is.bignumber.equal(fee, 'is the fee correct')
       }
-      const before = details.rent.mul(details.expiration.sub(await time.latest()))
-      await instRN.setRent(newRent, 0, {from: acc4})
-      details = await instRN.getNodeDetails(acc4)
-      expect(details.rent).is.bignumber.equal(new BN(newRent))
-      const after = details.rent.mul(details.expiration.sub(await time.latest()))
-      expect(after).is.bignumber.at.most(before).at.least(before.sub(details.rent).sub(details.rent))
+      await instRN.update(fund, newRent, !!escalate, {from})
+      const after = await instRN.query(from)
+      const expectedBalance = before.balance.add(new BN(fund)).sub(fee)
+      const expectedBalanceMin = expectedBalance.sub(after.rent).sub(BN.max(before.rent, after.rent))
+      console.log(`          + ${after.balance.toString()} in [${expectedBalance},${expectedBalanceMin})`)
+      expect(after.balance, 'is the result balance correct').is.bignumber.at.most(expectedBalance).gt(expectedBalanceMin)
     }
 
   })

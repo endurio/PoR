@@ -15,7 +15,7 @@ contract DataStructure {
     // System Config //
     Config config = Config(
         uint32(COM_RATE_UNIT / 2),  // 1/2 of miner reward
-        1e9                         // levelStep: halves the commission every 1e9 of rent up the stream
+        1e3                         // halves the commission every levelStep of rent up the referral chain
     );
 
     // BrandMarket //

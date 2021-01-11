@@ -180,10 +180,10 @@ contract("RefNetwork: Commission", accounts => {
         { rent:   1, rate: 0.5 },
       ])
       await expectHitRate([
-        { rent:   '0.000000001', rate: 0 },
-        { rent:   '0.000000001', rate: 0 },
-        { rent:   '0.000000001', rate: 0 },
-        { rent:   '0.000000001', rate: 0 },
+        { rent:   '0.001', rate: 0 },
+        { rent:   '0.001', rate: 0 },
+        { rent:   '0.001', rate: 0 },
+        { rent:   '0.001', rate: 0 },
         { rent:   1, rate: 0.5 },
       ])
       await expectHitRate([
@@ -204,8 +204,7 @@ contract("RefNetwork: Commission", accounts => {
           rates['miner'] = rate
           for (const miner of miners) {
             if (rent) {
-              await instRN.setRent(decShift(rent, 9), {from: miner})
-              await instRN.deposit(100000000000, {from: miner})
+              await instRN.update(100000000000, decShift(rent, 3), true, {from: miner})
             }
             await instRN.attach(noders[1], {from: miner})
           }
@@ -214,8 +213,7 @@ contract("RefNetwork: Commission", accounts => {
           const {rent, rate} = nodes[i]
           const noder = noders[i]
           if (rent) {
-            await instRN.setRent(decShift(rent, 9), {from: noder})
-            await instRN.deposit(100000000000, {from: noder})
+            await instRN.update(100000000000, decShift(rent, 3), true, {from: noder})
           }
           rates[noder] = rate
           if (i+1 < nodes.length) {
