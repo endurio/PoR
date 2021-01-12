@@ -26,7 +26,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     uint    constant MAX_UINT64         = (1<<64)-1;
 
     uint    constant ROOT_COM_RATE      = 32;       // root commission chance = 1/32
-    uint    constant RENT_CD            = 1 weeks;
+    uint    constant RENT_EPOCH         = 1 weeks;
 
     function initialize() public override {
         require(config.root == address(0x0), "already initialized");
@@ -86,13 +86,13 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
             // rent changed
             if (newRent > rent) {
                 // upgrade
-                fee = SafeMath.mul(newRent-rent, RENT_CD/2); // safe
+                fee = SafeMath.mul(newRent-rent, RENT_EPOCH/2); // safe
                 if (newRent > rent*2 || !time.reach(node.cooldownEnd)) {
                     require(escalate, "!escalate");
                     fee = SafeMath.mul(fee, 3);
                 }
                 balance = SafeMath.sub(balance, fee, "balance < upgrade fee");
-                node.cooldownEnd = uint64(time.next(RENT_CD));   // schedule the next slow upgrade
+                node.cooldownEnd = uint64(time.next(RENT_EPOCH));   // schedule the next slow upgrade
             }
             rent = newRent;
         }
@@ -142,9 +142,9 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     /// decayinRent = (rent/2**(elapsed/CD))*(1-elapsed%CD/CD/2)
     function _getDecayingRent(uint rent, uint elapsed) internal pure returns (uint) {
         // exponential decay over weeks
-        rent >>= elapsed/RENT_CD;
+        rent >>= elapsed/RENT_EPOCH;
         // linear decay from 1 to 0.5 during the week
-        uint weekDecaying = CapMath.checkedScale(rent, elapsed%RENT_CD, RENT_CD*2);
+        uint weekDecaying = CapMath.checkedScale(rent, elapsed%RENT_EPOCH, RENT_EPOCH*2);
         return SafeMath.sub(rent, weekDecaying, "decaying rent overflow");
     }
 
