@@ -256,7 +256,7 @@ contract("RefNetwork: Commission", accounts => {
       for (let i = 0; i < sampleCount; ++i) {
         const comRate = globalComRate.add(new BN(i))
         const ss = await snapshot.take()
-        await inst.setGlobalConfig(comRate, HIGHEST_ONE)
+        await inst.setComRate(comRate)
         const hits = await getComHitRate(comRate)
         for (const payee in hits) {
           allhits[payee] = (allhits[payee]||0) + hits[payee]

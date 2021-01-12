@@ -11,11 +11,14 @@ contract DataStructure {
     mapping(bytes4 => address) impls;   // function signature => implementation contract address
                                         // TODO: use ds to save a KECCAK on each proxy call
     address owner;                      // responsible for contract upgrade
+    bytes12 ___reserved;                // unused 12 bytes
 
     // System Config //
     Config config = Config(
         uint32(COM_RATE_UNIT / 2),  // 1/2 of miner reward
-        1e3                         // halves the commission every levelStep of rent up the referral chain
+        1e3,                        // halves the commission every rentScale of rent up the referral chain
+        address(0x0),               // root
+        0                           // unused 12 bytes
     );
 
     // BrandMarket //
@@ -26,14 +29,13 @@ contract DataStructure {
 
     // RefNet //
     mapping(address => Node) nodes;
-    address root;                       // owner of the root node, can be changed by owner
 
     // Poof of Reference //
     mapping(bytes32 => mapping(bytes32 => Reward)) internal rewards;
 
     // constant
     // com-rate is [0;4,294,967,296)
-    uint    constant COM_RATE_UNIT      = 1e9;
+    uint    constant COM_RATE_UNIT          = 1e9;
 
     // cut-back rate is [0;1e9]
     uint    constant CUTBACK_RATE_UNIT      = 1e9;
@@ -41,7 +43,8 @@ contract DataStructure {
     uint    constant CUTBACK_RATE_MASK      = (1<<30)-1;
 
     // events
-    event GlobalConfig(uint comRate, uint levelStep);
+    event GlobalConfig(bytes32 indexed key, uint value);
+    event GlobalConfig(bytes32 indexed key, address value);
 
     // TODO: Activated and Deactivaed?
     event Active(
@@ -104,11 +107,16 @@ struct Config {
     // commission = reward * comRate / COM_RATE_UNIT;
     uint32  comRate;
 
-    // commission halves every levelStep of rent up the stream
-    // (?) levelStep must never be zero.
-    //     0: all commission go to the miner himself
-    //     1: almost all commission go to the first node with non-zero rent
-    uint224 levelStep;
+    // commission halves every rentScale of rent up the referral chain
+    //     0: all commission go to the first node with non-zero rent
+    //   max: close to flat-rate commission
+    uint224 rentScale;
+
+    // owner of the root node, can be changed by owner
+    address root;
+
+    // unused 12 bytes
+    bytes12 ___reserved;
 }
 
 struct Brand {

@@ -29,8 +29,8 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
     uint    constant RENT_CD            = 1 weeks;
 
     function initialize() public override {
-        require(root == address(0x0), "already initialized");
-        root = msg.sender;
+        require(config.root == address(0x0), "already initialized");
+        config.root = msg.sender;
     }
 
     /**
@@ -197,7 +197,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         // there's always 1/32 chance that the raw commission will go to root
         if (uiSeed % ROOT_COM_RATE == 0) {
             // reuse amount for actual rewarded amount
-            (amount,) = _payByBrand(memoHash, payer, root, amount);
+            (amount,) = _payByBrand(memoHash, payer, config.root, amount);
             emit CommissionRoot(payer, miner, amount);
             return;
         }
@@ -252,7 +252,7 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
         // TODO: lazy evaluation this
         // seed = uint(keccak256(abi.encodePacked(seed))); // rehash
         int128 x = int128(seed & MAX_UINT64);   // random 64x64 number in [0,1)
-        uint distance = x.log_2().neg().muluc(config.levelStep);
+        uint distance = x.log_2().neg().muluc(config.rentScale);
 
         address noder = miner;
         while(true) {

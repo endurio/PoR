@@ -111,28 +111,32 @@ contract Endurio is DataStructure, Token {
         owner = newOwner;
     }
 
-    function getRoot() external view returns (address) {
-        return root;
+    function setRoot(address root) external {
+        require(msg.sender == config.root || msg.sender == owner, "!root");
+        config.root = root;
+        emit GlobalConfig("root", root);
     }
 
-    function setRoot(address newRoot) external {
-        require(msg.sender == root || msg.sender == owner, "!owner");
-        root = newRoot;
+    function setComRate(uint comRate) external {
+        require(msg.sender == config.root || msg.sender == owner, "!root");
+        require(comRate < 1<<32, ">32bits");
+        config.comRate = uint32(comRate);
+        emit GlobalConfig("ComRate", comRate);
     }
 
-    function setGlobalConfig(uint comRate, uint levelStep) external {
-        require(msg.sender == root || msg.sender == owner, "!owner");
-        if (comRate < 1<<32) {
-            config.comRate = uint32(comRate);
-        }
-        if (levelStep < 1<<224) {
-            config.levelStep = uint224(levelStep);
-        }
-        emit GlobalConfig(comRate, levelStep);
+    function setRentScale(uint rentScale) external {
+        require(msg.sender == config.root || msg.sender == owner, "!root");
+        require(rentScale < 1<<224, ">224bits");
+        config.rentScale = uint224(rentScale);
+        emit GlobalConfig("RentScale", rentScale);
     }
 
-    function getGlobalConfig() external view returns (uint32 comRate, uint224 levelStep) {
-        return (config.comRate, config.levelStep);
+    function getGlobalConfig() external view returns (
+        uint    comRate,
+        uint    rentScale,
+        address root
+    ) {
+        return (config.comRate, config.rentScale, config.root);
     }
 
     /**
