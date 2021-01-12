@@ -25,11 +25,11 @@ contract Endurio is DataStructure, Token {
         address implRefNetwork,
         address implPoR
     ) public {
-        owner = msg.sender; // responsible for contract upgrade
+        config.owner = msg.sender;  // responsible for contract upgrade
+        config.root = msg.sender;
 
         // delegate call initialize() for each implementations
         mustDelegateCall(implBrandMarket, hex"8129fc1c");
-        mustDelegateCall(implRefNetwork, hex"8129fc1c");
 
         // All ERC20 functions are not upgradable
 
@@ -74,7 +74,7 @@ contract Endurio is DataStructure, Token {
      * set the implementation contract for a single function signature.
      */
     function setImplementation(bytes32 sign, address impl) external {
-        require(msg.sender == owner, "!owner");
+        require(msg.sender == config.owner, "!owner");
         // TODO: verify impl is a contract
         _setImplementation(sign, impl);
     }
@@ -84,7 +84,7 @@ contract Endurio is DataStructure, Token {
      * packed in the signs from the left.
      */
     function setImplementations(bytes32 signs, address impl) external {
-        require(msg.sender == owner, "!owner");
+        require(msg.sender == config.owner, "!owner");
         // TODO: verify impl is a contract
         bytes32 ss = signs;
         for (uint i = 0; i < 8; ++i) {
@@ -102,41 +102,34 @@ contract Endurio is DataStructure, Token {
         emit Implementation(sign, impl);
     }
 
-    function getOwner() external view returns (address) {
-        return owner;
-    }
-
-    function setOwner(address newOwner) external {
-        require(msg.sender == owner, "!owner");
-        owner = newOwner;
+    function setOwner(address owner) external {
+        require(msg.sender == config.owner, "!owner");
+        config.owner = owner;
+        emit GlobalConfig("owner", owner);
     }
 
     function setRoot(address root) external {
-        require(msg.sender == config.root || msg.sender == owner, "!root");
+        require(msg.sender == config.root || msg.sender == config.owner, "!root");
         config.root = root;
         emit GlobalConfig("root", root);
     }
 
     function setComRate(uint comRate) external {
-        require(msg.sender == config.root || msg.sender == owner, "!root");
+        require(msg.sender == config.root || msg.sender == config.owner, "!root");
         require(comRate < 1<<32, ">32bits");
         config.comRate = uint32(comRate);
         emit GlobalConfig("ComRate", comRate);
     }
 
     function setRentScale(uint rentScale) external {
-        require(msg.sender == config.root || msg.sender == owner, "!root");
+        require(msg.sender == config.root || msg.sender == config.owner, "!root");
         require(rentScale < 1<<224, ">224bits");
         config.rentScale = uint224(rentScale);
         emit GlobalConfig("RentScale", rentScale);
     }
 
-    function getGlobalConfig() external view returns (
-        uint    comRate,
-        uint    rentScale,
-        address root
-    ) {
-        return (config.comRate, config.rentScale, config.root);
+    function getGlobalConfig() external view returns (address owner, address root, uint comRate, uint rentScale) {
+        return (config.owner, config.root, config.comRate, config.rentScale);
     }
 
     /**

@@ -18,7 +18,7 @@ import "./interface/IRefNet.sol";
  *
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
-contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
+contract RefNetwork is DataStructure, Token, IRefNet {
     using libnode for Node;
     using ABDKMath64x64 for int128;
 
@@ -27,11 +27,6 @@ contract RefNetwork is DataStructure, Token, IRefNet, Initializable {
 
     uint    constant ROOT_COM_RATE      = 32;       // root commission chance = 1/32
     uint    constant RENT_EPOCH         = 1 weeks;
-
-    function initialize() public override {
-        require(config.root == address(0x0), "already initialized");
-        config.root = msg.sender;
-    }
 
     /**
      * init a node, attach or re-attach to parent node

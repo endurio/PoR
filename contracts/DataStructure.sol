@@ -10,15 +10,14 @@ contract DataStructure {
     // Upgradable Contract Proxy //
     mapping(bytes4 => address) impls;   // function signature => implementation contract address
                                         // TODO: use ds to save a KECCAK on each proxy call
-    address owner;                      // responsible for contract upgrade
-    bytes12 ___reserved;                // unused 12 bytes
-
     // System Config //
     Config config = Config(
-        uint32(COM_RATE_UNIT / 2),  // 1/2 of miner reward
-        1e3,                        // halves the commission every rentScale of rent up the referral chain
+        address(0x0),               // owner
+        0,                          // unused 12 bytes
         address(0x0),               // root
-        0                           // unused 12 bytes
+        0,                          // unused 12 bytes
+        uint32(COM_RATE_UNIT / 2),  // 1/2 of miner reward
+        1e3                         // halves the commission every rentScale of rent up the referral chain
     );
 
     // BrandMarket //
@@ -104,6 +103,12 @@ contract DataStructure {
 }
 
 struct Config {
+    address owner;          // responsible for contract upgrade
+    bytes12 ownerReserved;  // unused 12 bytes
+
+    address root;           // owner of the root node, can be changed by owner
+    bytes12 rootReserved;   // unused 12 bytes
+
     // commission = reward * comRate / COM_RATE_UNIT;
     uint32  comRate;
 
@@ -111,12 +116,6 @@ struct Config {
     //     0: all commission go to the first node with non-zero rent
     //   max: close to flat-rate commission
     uint224 rentScale;
-
-    // owner of the root node, can be changed by owner
-    address root;
-
-    // unused 12 bytes
-    bytes12 ___reserved;
 }
 
 struct Brand {
