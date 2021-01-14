@@ -32,29 +32,38 @@ contract BrandMarket is DataStructure, Token, Initializable {
     ) external {
         bytes32 memoHash = keccak256(memo);
         Brand storage brand = brands[memoHash][msg.sender];
-        if (time.reach(brand.expiration)) {
+        uint expiration = brand.expiration;
+        if (time.reach(expiration)) {
             // new campaign
             require(payRate > 0, "!payRate");
+            require(payRate < 1<<192, "payRate overflow");
+            brand.payRate = uint192(payRate);
             require(fund > 0, "!fund");
-            brand.payRate = uint192(payRate); // overflowable: unexploitable
-            brand.expiration = uint64(time.next(duration > 0 ? duration : 2 weeks)); // overflowable: unexploitable
+            expiration = time.next(duration > 0 ? duration : 2 weeks);
+            require(expiration < 1<<64, "expiration overflow");
+            brand.expiration = uint64(expiration);
         } else {
             // power-up old campaign
             if (payRate > 0) {
                 require(payRate > brand.payRate, "!expired: increasing pay rate only");
+                require(payRate < 1<<192, "payRate overflow");
                 brand.payRate = uint192(payRate);
             }
             if (duration > 0) {
-                uint64 newExpiration = uint64(time.next(duration)); // overflowable: unexploitable
-                require(newExpiration > brand.expiration, "!expired: extending expiration only");
-                brand.expiration = newExpiration;
+                uint oldExpiration = expiration;
+                expiration = time.next(duration);
+                require(expiration > oldExpiration, "!expired: extending expiration only");
+                require(expiration < 1<<64, "expiration overflow");
+                brand.expiration = uint64(expiration);
             }
         }
+        uint balance = brand.balance;
         if (fund > 0) {
             _transfer(msg.sender, address(this), fund);
-            brand.balance += fund; // overflowable: unexploitable
+            balance = SafeMath.add(balance, fund);
+            brand.balance = balance;
         }
-        emit Active(memoHash, msg.sender, memo, payRate, brand.balance, brand.expiration);
+        emit Active(memoHash, msg.sender, memo, payRate, balance, expiration);
     }
 
     /**
