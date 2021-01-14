@@ -77,10 +77,7 @@ contract BrandMarket is DataStructure, Token, Initializable {
         emit Deactive(memoHash, msg.sender);
     }
 
-    function getCampaignDetails(
-        bytes32 memoHash,
-        address payer
-    ) external view returns (
+    function queryCampaign(bytes32 memoHash, address payer) external view returns (
         uint balance,
         uint payRate,
         uint expiration

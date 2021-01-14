@@ -37,7 +37,7 @@ contract Endurio is DataStructure, Token {
         // (export CONTRACT=PoR; cd ..; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
         impls[0x0af77eb1] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
-        impls[0x46071a6b] = implBrandMarket;    // getCampaignDetails
+        impls[0x56cb121d] = implBrandMarket;    // queryCampaign
         impls[0x7a3b3117] = implPoR;    // claim
         impls[0xa181b684] = implPoR;    // commit
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
