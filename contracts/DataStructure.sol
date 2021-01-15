@@ -45,7 +45,6 @@ contract DataStructure {
     event GlobalConfig(bytes32 indexed key, uint value);
     event GlobalConfig(bytes32 indexed key, address value);
 
-    // TODO: Activated and Deactivaed?
     event Active(
         bytes32 indexed memoHash,
         address indexed payer,
