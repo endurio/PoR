@@ -168,7 +168,7 @@ contract("BrandMarket", accounts => {
     it("mine the txs", async() => {
       const payer = sender.address;
 
-      const commitTxs = [
+      const testingTxs = [
         'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17',
         '8fc78e141b1e3ce488d4d06f387f4fb8a78f87b9b3949d7bfe2fb70d9a984444',
         '1bd88cab82b0f38e086d63142a7d00dfa35d15273054ccd887e796e44d53093c',
@@ -177,7 +177,7 @@ contract("BrandMarket", accounts => {
         '45502cf89a706abe375bc1adaa0952925c435f3e3d8a1aedc668d2203e9c2fc0',
       ]
 
-      for (const txHash of commitTxs) {
+      for (const txHash of testingTxs) {
         const receipt = await mine(txHash, payer)
         const miner = txs[txHash].miner
         const reward = utils.getExpectedReward(txHash, payRate).bounty
@@ -215,9 +215,9 @@ contract("BrandMarket", accounts => {
   }
 
   async function mine(txHash, payer) {
-    const commitReceipt = await utils.commitTx(txHash, payer)
+    const submitReceipt = await utils.submitTx(txHash, payer)
     await utils.timeToClaim(txHash)
-    return await utils.claim(commitReceipt)
+    return await utils.claim(submitReceipt)
   }
 })
 

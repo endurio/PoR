@@ -389,9 +389,9 @@ contract("RefNetwork", accounts => {
   }
 
   async function mine(txHash, payer) {
-    const commitReceipt = await utils.commitTx(txHash, payer)
+    const submitReceipt = await utils.submitTx(txHash, payer)
     await utils.timeToClaim(txHash)
-    return await utils.claim(commitReceipt)
+    return await utils.claim(submitReceipt)
   }
 })
 

@@ -62,17 +62,17 @@ contract("PoR", accounts => {
       desc: 'x3',
       tx: '3ef4453b2cfff417c4c37e3fa2ec0922162262d49ffe5d43f8c010709cfb4b11',
       params: {memoLength: ENDURIO.length},
-      expect: {commitRevert: "insufficient work"},
+      expect: {submitRevert: "insufficient work"},
     }, {
       desc: 'x6',
       tx: 'b9abf8270a01d1faa8afe016f4db80e7f3e71a59bcad4238b75a290ebbf37321',
       params: {memoLength: ENDURIO.length},
-      expect: {commitRevert: "insufficient work"},
+      expect: {submitRevert: "insufficient work"},
     }, {
       desc: 'x136',
       tx: 'b0804780ba68abd358a0fc66d2a7f29fd1f5b11382cb73806ba8b7e3504460bb',
       params: {memoLength: ENDURIO.length},
-      expect: {commitRevert: "insufficient work"},
+      expect: {submitRevert: "insufficient work"},
     }, {
       desc: '(no x)',
       tx: 'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
@@ -82,22 +82,22 @@ contract("PoR", accounts => {
       desc: 'x2 with no memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: 0},
-      expect: {commitRevert: "brand not active"},
+      expect: {submitRevert: "brand not active"},
     }, {
       desc: 'x2 with smaller memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length-1},
-      expect: {commitRevert: "brand not active"},
+      expect: {submitRevert: "brand not active"},
     }, {
       desc: 'x2 with larger memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length+1},
-      expect: {commitRevert: "brand not active"},
+      expect: {submitRevert: "brand not active"},
     }, {
       desc: 'x2 with way larger memoLength',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
       params: {memoLength: ENDURIO.length+60},
-      expect: {commitRevert: "OOB: memo length"},
+      expect: {submitRevert: "OOB: memo length"},
     }, {
       desc: 'x2 with correct memoLength and multiplier = 2',
       tx: '302578f795daa5aa45751bdcdcd0a3213824c2bd70aeeade5807e414e5c6166f',
@@ -112,77 +112,77 @@ contract("PoR", accounts => {
       await snapshot.revert(ss);
     })
 
-    async function testXMine(txHash, {memoLength, multiplier}, {commitRevert, claimRevert}) {
-      const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
+    async function testXMine(txHash, {memoLength, multiplier}, {submitRevert, claimRevert}) {
+      const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
       if (memoLength != null) {
         params.memoLength = memoLength;
       }
 
-      const promise = utils.commit(params, outpoint, bounty)
+      const promise = utils.submit(params, outpoint, bounty)
 
-      if (commitRevert) {
-        return expectRevert(promise, commitRevert);
+      if (submitRevert) {
+        return expectRevert(promise, submitRevert);
       }
 
-      const commitReceipt = await promise;
+      const submitReceipt = await promise;
 
       await utils.timeToClaim(txHash)
       const txData = txs[txHash]
 
       if (claimRevert) {
-        return expectRevert(utils.claim(commitReceipt), claimRevert);
+        return expectRevert(utils.claim(submitReceipt), claimRevert);
       }
 
-      return expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner, multiplier);
+      return expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner, multiplier);
     }
   })
 
   describe('mining', () => {
-    it("commit competition", async() => {
+    it("submit competition", async() => {
       const losingTx = 'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a'
       const winingTx = 'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78' // intentional typo
 
       const ss = await snapshot.take();
-      await utils.commitTx(losingTx)
-      await utils.commitTx(winingTx)
-      await expectRevert(utils.commitTx(losingTx), 'lost');
+      await utils.submitTx(losingTx)
+      await utils.submitTx(winingTx)
+      await expectRevert(utils.submitTx(losingTx), 'lost');
       await snapshot.revert(ss);
     })
 
-    it("commit custom PK position in redeem script", async() => {
-      const commitTxs = [
+    it("submit custom PK position in redeem script", async() => {
+      const testingTxs = [
         'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
       ]
-      for (const txHash of commitTxs) {
+      for (const txHash of testingTxs) {
         const txData = txs[txHash]
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
         await testPosPK(-1, {missingMiner: true});
         await testPosPK(4, {missingMiner: true});
-        await testPosPK(5, {commitRevert: "Slice out of bounds"});
+        await testPosPK(5, {submitRevert: "Slice out of bounds"});
         await testPosPK(0);
 
-        async function testPosPK(pubkeyPosOffset, {commitRevert, missingMiner}={}) {
+        async function testPosPK(pubkeyPosOffset, {submitRevert, missingMiner}={}) {
           const p = {
             ...params,
             pubkeyPos: params.pubkeyPos+pubkeyPosOffset,
           }
-          if (commitRevert) {
-            return expectRevert(utils.commit(p, outpoint, bounty), commitRevert);
+          if (submitRevert) {
+            return expectRevert(utils.submit(p, outpoint, bounty), submitRevert);
           }
           const ss = await snapshot.take();
-          const commitReceipt = await utils.commit(p, outpoint, bounty);
+          const submitReceipt = await utils.submit(p, outpoint, bounty);
           await utils.timeToClaim(txHash)
           if (missingMiner) {
             try {
-              await utils.claim(commitReceipt);
+              await utils.claim(submitReceipt);
             } catch(err) {
               expect(err).contains('missing miner')
             }
           } else {
-            await utils.claim(commitReceipt);
+            await utils.claim(submitReceipt);
           }
           await snapshot.revert(ss);
         }
@@ -190,15 +190,15 @@ contract("PoR", accounts => {
     })
 
     it("custom pkhPos", async() => {
-      const commitTxs = [
+      const testingTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
         '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
       const wrongDxHash = 'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c';
 
-      for (const txHash of commitTxs) {
+      for (const txHash of testingTxs) {
         const txData = txs[txHash]
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
         await mineTest({params, outpoint, bounty}, {})
         await mineTest({params, outpoint: [{...outpoint[0], pkhPos: 10}], bounty}, {missingMiner: true})
@@ -207,47 +207,47 @@ contract("PoR", accounts => {
         const isSegWit = txData.hex.slice(8, 10) === '00';
         await mineTest({params, outpoint: [{...outpoint[0], pkhPos: isSegWit?11:12}], bounty}, {})
 
-        await mineTest(utils.prepareCommit({txHash, brand: ENDURIO}, {dxHash: wrongDxHash}), {commitRevert: 'outpoint mismatch'})
+        await mineTest(utils.prepareSubmit({txHash, brand: ENDURIO}, {dxHash: wrongDxHash}), {submitRevert: 'outpoint mismatch'})
 
-        async function mineTest({params, outpoint, bounty}, {commitRevert, claimRevert, missingMiner}) {
-          if (commitRevert) {
-            return expectRevert(utils.commit(params, outpoint, bounty), commitRevert);
+        async function mineTest({params, outpoint, bounty}, {submitRevert, claimRevert, missingMiner}) {
+          if (submitRevert) {
+            return expectRevert(utils.submit(params, outpoint, bounty), submitRevert);
           }
           const ss = await snapshot.take();
-          const commitReceipt = await utils.commit(params, outpoint, bounty);
+          const submitReceipt = await utils.submit(params, outpoint, bounty);
           await utils.timeToClaim(txHash)
           if (claimRevert) {
-            await expectRevert(utils.claim(commitReceipt), claimRevert);
+            await expectRevert(utils.claim(submitReceipt), claimRevert);
           } else if (missingMiner) {
             try {
-              await utils.claim(commitReceipt);
+              await utils.claim(submitReceipt);
             } catch(err) {
               expect(err).contains('missing miner')
             }
           } else {
-            await utils.claim(commitReceipt);
+            await utils.claim(submitReceipt);
           }
           await snapshot.revert(ss);
         }
       }
     })
 
-    it("commit with no OP_RET", async() => {
-      const commitTxs = [
+    it("submit with no OP_RET", async() => {
+      const testingTxs = [
         'e8c8a653e4bdcad2556c5dc93e1261e89b6eb69c5349a3f49360db68208699d2',
       ]
-      for (const txHash of commitTxs) {
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
-        await expectRevert(utils.commit(params, outpoint, bounty), '!OP_RET');
+      for (const txHash of testingTxs) {
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
+        await expectRevert(utils.submit(params, outpoint, bounty), '!OP_RET');
       }
     })
   })
 
   describe('sticky', () => {
-    const commitReceipts = {}
+    const submitReceipts = {}
 
-    it("commit txs", async() => {
-      const commitTxs = [
+    it("submit txs", async() => {
+      const testingTxs = [
         '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
         'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
@@ -258,19 +258,19 @@ contract("PoR", accounts => {
         '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
       ]
 
-      for (const txHash of commitTxs) {
+      for (const txHash of testingTxs) {
         const txData = txs[txHash]
         const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand: ENDURIO});
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
-        await expectRevert(utils.commit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
+        await expectRevert(utils.submit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
 
-        await expectRevert(utils.commit({...params, merkleProof: '0x'+params.merkleProof.slice(66)}, outpoint, bounty), 'invalid merkle proof');
+        await expectRevert(utils.submit({...params, merkleProof: '0x'+params.merkleProof.slice(66)}, outpoint, bounty), 'invalid merkle proof');
 
         { // snapshot scope
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
-          await utils.commit(params, outpoint, bounty);
+          await utils.submit(params, outpoint, bounty);
           await snapshot.revert(ss);
         }
 
@@ -278,14 +278,14 @@ contract("PoR", accounts => {
           const ss = await snapshot.take();
           await time.increaseTo(block.timestamp + 60*60)
           await expectRevert(
-            utils.commit(params, outpoint, bounty),
+            utils.submit(params, outpoint, bounty),
             'mining time over',
           );
           await snapshot.revert(ss);
         }
 
         const tx = bitcoinjs.Transaction.fromHex(txData.hex)
-        const promise = utils.commit({...params, inputIndex: 1}, outpoint, bounty)
+        const promise = utils.submit({...params, inputIndex: 1}, outpoint, bounty)
         if (tx.ins.length == 1) {
           await expectRevert(promise, 'Vin read overrun')
         } else {
@@ -296,19 +296,19 @@ contract("PoR", accounts => {
           }
         }
 
-        // commit with bad header
-        await expectRevert(utils.commit({
+        // submit with bad header
+        await expectRevert(utils.submit({
           ...params,
           header: params.header.substring(0,params.header.length-8) + '00000000',  // clear the 4-bytes nonce
         }, outpoint, bounty), 'insufficient work')
 
         // correct data
-        commitReceipts[txHash] = await utils.commit(params, outpoint, bounty);
+        submitReceipts[txHash] = await utils.submit(params, outpoint, bounty);
       }
     })
 
     it("claim", async() => {
-      const commitTxs = [
+      const testingTxs = [
         'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
         '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
       //'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a', // missing miner key?
@@ -321,22 +321,22 @@ contract("PoR", accounts => {
       const ownMinerTests = {}
       let tooSoonTestsCount = 0
 
-      for (const txHash of commitTxs) {
-        const commitReceipt = commitReceipts[txHash]
-        expect(commitReceipt, 'should the transaction have a commit receipt').to.be.not.null
+      for (const txHash of testingTxs) {
+        const submitReceipt = submitReceipts[txHash]
+        expect(submitReceipt, 'should the transaction have a submit receipt').to.be.not.null
 
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
 
         const targetTimestamp = block.timestamp + 60*60;
         if (await time.latest() < targetTimestamp) {
-          await expectRevert(utils.claim(commitReceipt), "too soon");
+          await expectRevert(utils.claim(submitReceipt), "too soon");
           ++tooSoonTestsCount
           await utils.timeToClaim(txHash);
         }
 
         // expect revert on claiming with fake reward
-        const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
+        const mined = submitReceipt.logs.find(log => log.event === 'Mined').args
         const key = utils.minerToClaim(mined)
         const params = utils.paramsToClaim(mined)
         await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: key.address}), "#commitment");
@@ -347,10 +347,10 @@ contract("PoR", accounts => {
         await expectRevert(instPoR.claim({...params, pubY: (BigInt(params.pubY)-2n).toString()}, {from: key.address}), "!miner");
 
         // honest claim
-        await expectEventClaim(utils.claim(commitReceipt), txHash, txData.miner);
+        await expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner);
 
         // double claim
-        await expectRevert(utils.claim(commitReceipt), "#commitment");
+        await expectRevert(utils.claim(submitReceipt), "#commitment");
       }
 
       expect(tooSoonTestsCount).to.be.gt(0, "should test data cover `too soon` case");

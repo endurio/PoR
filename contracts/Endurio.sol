@@ -39,7 +39,7 @@ contract Endurio is DataStructure, Token {
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x56cb121d] = implBrandMarket;    // queryCampaign
         impls[0x7a3b3117] = implPoR;    // claim
-        impls[0xa181b684] = implPoR;    // commit
+        impls[0xf4b0bafa] = implPoR;    // submit
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
         impls[0xe5d9c0ad] = implRefNetwork;     // update
         impls[0xd4fc9fc6] = implRefNetwork;     // query

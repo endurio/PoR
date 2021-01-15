@@ -59,17 +59,17 @@ module.exports = {
     return loadBlockData()
   },
 
-  commitTx(txHash, payer, brand) {
-    const {params, outpoint, bounty} = this.prepareCommit({txHash, brand, payer});
-    return this.commit(params, outpoint, bounty)
+  submitTx(txHash, payer, brand) {
+    const {params, outpoint, bounty} = this.prepareSubmit({txHash, brand, payer});
+    return this.submit(params, outpoint, bounty)
   },
 
-  commit(params, outpoint, bounty) {
+  submit(params, outpoint, bounty) {
     if (outpoint.length > 0 && bounty.length == 0) {
-      return expectRevert(instPoR.commit(params, [], bounty), '!outpoint')
-        .then(() => instPoR.commit(params, outpoint, bounty))
+      return expectRevert(instPoR.submit(params, [], bounty), '!outpoint')
+        .then(() => instPoR.submit(params, outpoint, bounty))
     }
-    return instPoR.commit(params, outpoint, bounty)
+    return instPoR.submit(params, outpoint, bounty)
   },
 
   extractTxParams(hex, tx) {
@@ -118,8 +118,8 @@ module.exports = {
     return tx.outs.length - memoIdx - 2;
   },
 
-  prepareCommit(txParams, outpointParams, bountyParams) {
-    const params = this._prepareCommitTx(txParams)
+  prepareSubmit(txParams, outpointParams, bountyParams) {
+    const params = this._prepareSubmitTx(txParams)
     if (params.pubkeyPos) {
       var outpoint = []
     } else {
@@ -174,7 +174,7 @@ module.exports = {
     return [bounty]
   },
 
-  _prepareCommitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {
+  _prepareSubmitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {
     const txData = txs[txHash];
     const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
     const [merkleProof, merkleIndex] = getMerkleProof(block, txHash);
@@ -249,8 +249,8 @@ module.exports = {
     }]
   },
 
-  claim(commitReceipt) {
-    const mined = commitReceipt.logs.find(log => log.event === 'Mined').args
+  claim(submitReceipt) {
+    const mined = submitReceipt.logs.find(log => log.event === 'Mined').args
     const key = this.minerToClaim(mined)
     const params = this.paramsToClaim(mined)
     return instPoR.claim(params, {from: key.address});

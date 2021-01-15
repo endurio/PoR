@@ -70,7 +70,7 @@ contract("RefNetwork: CutBack", accounts => {
     expect(utils.inst, 'utils contract instances not initialized').to.not.be.null
   })
 
-  const commitTxs = [
+  const testingTxs = [
     '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
     'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
     '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
@@ -78,18 +78,18 @@ contract("RefNetwork: CutBack", accounts => {
     '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
     '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
   ]
-  const commitReceipts = {}
+  const submitReceipts = {}
   const miners = []
-  commitTxs.forEach(txHash => {
+  testingTxs.forEach(txHash => {
     const miner = txs[txHash].miner
     if (!miners.includes(miner)) {
       miners.push(miner)
     }
   })
 
-  before('commit all txs', async () => {
-    for (const txHash of commitTxs) {
-      commitReceipts[txHash] = await utils.commitTx(txHash);
+  before('submit all txs', async () => {
+    for (const txHash of testingTxs) {
+      submitReceipts[txHash] = await utils.submitTx(txHash);
     }
   })
 
@@ -107,7 +107,7 @@ contract("RefNetwork: CutBack", accounts => {
     it("commission native cut back", async() => {
       const ss = await snapshot.take()
       const txHash = '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a'
-      await utils.timeToClaim(commitTxs[commitTxs.length-1])
+      await utils.timeToClaim(testingTxs[testingTxs.length-1])
 
       const miner = txs[txHash].miner
       await instRN.attach(acc4, {from: miner});
@@ -138,7 +138,7 @@ contract("RefNetwork: CutBack", accounts => {
     it("commission token cut back", async() => {
       const ss = await snapshot.take()
       const txHash = '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a'
-      await utils.timeToClaim(commitTxs[commitTxs.length-1])
+      await utils.timeToClaim(testingTxs[testingTxs.length-1])
 
       const miner = txs[txHash].miner
       await instRN.attach(acc4, {from: miner});
@@ -147,13 +147,13 @@ contract("RefNetwork: CutBack", accounts => {
 
       // abuse the END as the cutback token
       const tokenAddress = inst.address
-      const commitReceipt = commitReceipts[txHash]
+      const submitReceipt = submitReceipts[txHash]
 
       { // snapshot scope
         const ss = await snapshot.take()
         await instRN.setCutbackRate(DUMMY_ADDRESS, 1, 0, {from: acc4})
-        await expectRevert(utils.claim(commitReceipt), 'revert')
-        const params = utils.paramsToClaim(commitReceipt)
+        await expectRevert(utils.claim(submitReceipt), 'revert')
+        const params = utils.paramsToClaim(submitReceipt)
         params.skipCommission = true
         const claimReceipt = await instPoR.claim(params, {from: miner})
         expectEvent(claimReceipt, 'CommissionSkip', { miner })
@@ -173,9 +173,9 @@ contract("RefNetwork: CutBack", accounts => {
         const ss = await snapshot.take()
         await instRN.setCutbackRate(tokenAddress, 1, 0, {from: acc4})
 
-        await expectRevert(utils.claim(commitReceipt), 'transfer amount exceeds allowance')
+        await expectRevert(utils.claim(submitReceipt), 'transfer amount exceeds allowance')
         await inst.approve(inst.address, 123, {from: acc4});
-        await expectRevert(utils.claim(commitReceipt), 'transfer amount exceeds allowance')
+        await expectRevert(utils.claim(submitReceipt), 'transfer amount exceeds allowance')
 
         await inst.approve(inst.address, HIGHEST_ONE, {from: acc4});
         await claimWithCommission(txHash, 1)
@@ -185,7 +185,7 @@ contract("RefNetwork: CutBack", accounts => {
 
       await inst.approve(inst.address, HIGHEST_ONE, {from: acc4});
       await instRN.setCutbackRate(tokenAddress, 613, 2, {from: acc4})
-      await expectRevert(utils.claim(commitReceipt), 'transfer amount exceeds balance')
+      await expectRevert(utils.claim(submitReceipt), 'transfer amount exceeds balance')
       await instRN.setCutbackRate(tokenAddress, 613, 4, {from: acc4})
       await claimWithCommission(txHash, 0.0613)
       await snapshot.revert(ss)
@@ -194,7 +194,7 @@ contract("RefNetwork: CutBack", accounts => {
     it("commission skipping self cut back", async() => {
       const ss = await snapshot.take()
       const txHash = '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a'
-      await utils.timeToClaim(commitTxs[commitTxs.length-1])
+      await utils.timeToClaim(testingTxs[testingTxs.length-1])
 
       const miner = txs[txHash].miner
       await instRN.update(100000000000, 10000, true, {from: miner})
@@ -209,8 +209,8 @@ contract("RefNetwork: CutBack", accounts => {
     async function claimWithCommission(txHash, cutbackRate) {
       const comRate = (await inst.getGlobalConfig()).comRate
       const miner = txs[txHash].miner
-      const commitReceipt = commitReceipts[txHash]
-      const claimReceipt = await utils.claim(commitReceipt)
+      const submitReceipt = submitReceipts[txHash]
+      const claimReceipt = await utils.claim(submitReceipt)
       const rewarded = claimReceipt.logs.find(log => log.event === 'Rewarded').args.value
       const value = rewarded.mul(comRate).div(new BN(1e9))
       const com = claimReceipt.logs.find(log => log.event === 'CommissionPaid')
@@ -239,9 +239,9 @@ contract("RefNetwork: CutBack", accounts => {
   }
 
   async function mine(txHash, payer) {
-    const commitReceipt = await utils.commitTx(txHash, payer)
+    const submitReceipt = await utils.submitTx(txHash, payer)
     await utils.timeToClaim(txHash)
-    return await utils.claim(commitReceipt)
+    return await utils.claim(submitReceipt)
   }
 })
 

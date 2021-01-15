@@ -66,7 +66,7 @@ contract PoR is DataStructure, IERC20Events {
         delete rewards[params.blockHash][params.memoHash];
     }
 
-    struct ParamCommit {
+    struct ParamSubmit {
         // brand
         address payer;
 
@@ -110,8 +110,8 @@ contract PoR is DataStructure, IERC20Events {
         bytes   vout;
     }
 
-    function commit(
-        ParamCommit     calldata    params,
+    function submit(
+        ParamSubmit     calldata    params,
         ParamOutpoint[] calldata    outpoint,
         ParamBounty[]   calldata    bounty
     ) external {
@@ -308,7 +308,7 @@ contract PoR is DataStructure, IERC20Events {
     }
 
     /**
-     * testing whether the given timestamp is in the commit time
+     * testing whether the given timestamp is in the submitting time
      */
     function _minable(uint timestamp) internal view returns (bool) {
         return time.elapse(timestamp) < MINING_TIME;

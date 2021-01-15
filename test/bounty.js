@@ -91,7 +91,7 @@ contract("PoR: Bounty Mining", accounts => {
     it("bounty mining", async() => {
       const payer = sender.address;
 
-      const commitTxs = {
+      const testingTxs = {
         'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09': 'bounty: unacceptable recipient',
         '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2': 'bounty: unacceptable recipient',
         'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17': undefined,
@@ -109,8 +109,8 @@ contract("PoR: Bounty Mining", accounts => {
         '45502cf89a706abe375bc1adaa0952925c435f3e3d8a1aedc668d2203e9c2fc0': undefined,
       }
 
-      for (const txHash of Object.keys(commitTxs)) {
-        const reason = commitTxs[txHash]
+      for (const txHash of Object.keys(testingTxs)) {
+        const reason = testingTxs[txHash]
 
         const brand = utils.guessMemo(txHash)
         const memoHash = web3.utils.keccak256(Buffer.from(brand))
@@ -132,51 +132,51 @@ contract("PoR: Bounty Mining", accounts => {
 
         { // snapshot scope
           const ss = await snapshot.take();
-          // commit without bounty
-          const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer}, {}, {noBounty: true});
-          const commitReceipt = await utils.commit(params, outpoint, bounty)
+          // submit without bounty
+          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer}, {}, {noBounty: true});
+          const submitReceipt = await utils.submit(params, outpoint, bounty)
           await utils.timeToClaim(txHash)
-          expectEventClaim(await utils.claim(commitReceipt), recipient, reward.base, payer, memoHash)
+          expectEventClaim(await utils.claim(submitReceipt), recipient, reward.base, payer, memoHash)
           await snapshot.revert(ss);
         }
 
-        const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer});
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer});
 
         if (reason) {
-          await expectRevert(utils.commit(params, outpoint, bounty), reason)
+          await expectRevert(utils.submit(params, outpoint, bounty), reason)
           continue
         }
 
-        // commit with bad bounty block header
-        await expectRevert(utils.commit(params, outpoint, [{
+        // submit with bad bounty block header
+        await expectRevert(utils.submit(params, outpoint, [{
           ...bounty[0],
           header: bounty[0].header.substring(0,bounty[0].header.length-8) + '00000000',  // clear the 4-bytes nonce
         }]), 'bounty: insufficient work')
 
-        // commit with bad merkle index
-        await expectRevert(utils.commit(params, outpoint, [{
+        // submit with bad merkle index
+        await expectRevert(utils.submit(params, outpoint, [{
           ...bounty[0],
           merkleIndex: bounty[0].merkleIndex+1,
         }]), 'bounty: invalid merkle proof')
 
-        // commit with bad merkle proof
-        await expectRevert(utils.commit(params, outpoint, [{
+        // submit with bad merkle proof
+        await expectRevert(utils.submit(params, outpoint, [{
           ...bounty[0],
           merkleProof: bounty[0].merkleProof.substring(0, bounty[0].merkleProof.length-2) + '00', // clear the last byte of the proof
         }]), 'bounty: invalid merkle proof')
         
-        // commit with bounty with each inputIndex availabe
+        // submit with bounty with each inputIndex availabe
         const nIns = bitcoinjs.Transaction.fromHex(txData.hex).ins.length
-        let commitReceipt
+        let submitReceipt
         for (let inputIndex = nIns-1; inputIndex >= 0; --inputIndex) {
-          const {params, outpoint, bounty} = utils.prepareCommit({txHash, brand, payer, inputIndex});
-          commitReceipt = await utils.commit(params, outpoint, bounty)
+          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex});
+          submitReceipt = await utils.submit(params, outpoint, bounty)
           if (inputIndex > 0) {
             var hasInputIndexCase = true
           }
         }
         await utils.timeToClaim(txHash)
-        expectEventClaim(await utils.claim(commitReceipt), recipient, reward.bounty, payer, memoHash)
+        expectEventClaim(await utils.claim(submitReceipt), recipient, reward.bounty, payer, memoHash)
       }
 
       expect(hasInputIndexCase, "should cover `inputIndex > 0` case").to.be.true
@@ -209,11 +209,11 @@ contract("PoR: Bounty Mining", accounts => {
   }
 
   async function mine(txHash) {
-    const commitReceipt = await utils.commitTx(txHash)
+    const submitReceipt = await utils.submitTx(txHash)
     await utils.timeToClaim(txHash)
     return {
-      claimReceipt: utils.claim(commitReceipt),
-      miner: utils.minerToClaim(commitReceipt),
+      claimReceipt: utils.claim(submitReceipt),
+      miner: utils.minerToClaim(submitReceipt),
     };
   }
 })
