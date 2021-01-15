@@ -22,7 +22,7 @@ interface IERC20Events {
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract PoR is DataStructure, IERC20Events {
-    uint constant MINING_TIME = 1 hours;
+    uint constant SUBMITTING_TIME = 1 hours;
     uint constant BOUNTY_TIME = 1 hours;
     uint constant RECIPIENT_RATE = 32;
 
@@ -47,7 +47,7 @@ contract PoR is DataStructure, IERC20Events {
     function claim(
         ParamClaim calldata params
     ) external {
-        require(!_minable(params.timestamp), "too soon");
+        require(!_submittable(params.timestamp), "too soon");
 
         Reward storage reward = rewards[params.blockHash][params.memoHash];
 
@@ -239,7 +239,7 @@ contract PoR is DataStructure, IERC20Events {
         }
 
         uint timestamp = params.header.extractTimestamp();
-        require(_minable(timestamp), "mining time over");
+        require(_submittable(timestamp), "submitting time over");
         if (bounty.length > 0) {
             require(timestamp - bounty[0].header.extractTimestamp() <= BOUNTY_TIME, "bounty: block too old");
         }
@@ -310,8 +310,8 @@ contract PoR is DataStructure, IERC20Events {
     /**
      * testing whether the given timestamp is in the submitting time
      */
-    function _minable(uint timestamp) internal view returns (bool) {
-        return time.elapse(timestamp) < MINING_TIME;
+    function _submittable(uint timestamp) internal view returns (bool) {
+        return time.elapse(timestamp) < SUBMITTING_TIME;
     }
 
     // PKH from uncompressed, unprefixed 64-bytes pubic key

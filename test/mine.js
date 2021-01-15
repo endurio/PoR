@@ -279,7 +279,7 @@ contract("PoR", accounts => {
           await time.increaseTo(block.timestamp + 60*60)
           await expectRevert(
             utils.submit(params, outpoint, bounty),
-            'mining time over',
+            'submitting time over',
           );
           await snapshot.revert(ss);
         }
