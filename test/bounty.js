@@ -195,7 +195,7 @@ contract("PoR: Bounty Mining", accounts => {
       to: recipient,
       value: reward.toString(),
     });
-    expectEvent(receipt, 'Rewarded', {
+    expectEvent(receipt, 'Claim', {
       memoHash,
       payer,
       miner: recipient,

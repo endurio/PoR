@@ -58,7 +58,7 @@ contract DataStructure {
         bytes32 indexed memoHash,
         address indexed payer
     );
-    event Mined(
+    event Submit(
         bytes32         blockHash,
         bytes32 indexed memoHash,
         address indexed payer,
@@ -66,7 +66,7 @@ contract DataStructure {
         uint            amount,
         uint            timestamp
     );
-    event Rewarded(
+    event Claim(
         bytes32 indexed memoHash,
         address indexed payer,
         address indexed miner,

@@ -250,7 +250,7 @@ module.exports = {
   },
 
   claim(submitReceipt) {
-    const mined = submitReceipt.logs.find(log => log.event === 'Mined').args
+    const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
     const key = this.minerToClaim(mined)
     const params = this.paramsToClaim(mined)
     return instPoR.claim(params, {from: key.address});
@@ -258,7 +258,7 @@ module.exports = {
 
   paramsToClaim(mined) {
     if (mined.logs) {
-      mined = mined.logs.find(log => log.event === 'Mined').args
+      mined = mined.logs.find(log => log.event === 'Submit').args
     }
     const { blockHash, memoHash, payer, amount, timestamp } = mined;
     const key = this.minerToClaim(mined)
@@ -276,14 +276,14 @@ module.exports = {
 
   isPKH(mined) {
     if (mined.logs) {
-      mined = mined.logs.find(log => log.event === 'Mined').args
+      mined = mined.logs.find(log => log.event === 'Submit').args
     }
     return mined.pubkey.substring(2+40) == '000000000000000000000000'
   },
 
   minerToClaim(mined) {
     if (mined.logs) {
-      mined = mined.logs.find(log => log.event === 'Mined').args
+      mined = mined.logs.find(log => log.event === 'Submit').args
     }
     if (this.isPKH(mined)) {
       var key = keys.find(key => key.pkh == mined.pubkey.substring(2, 2+40))

@@ -336,7 +336,7 @@ contract("PoR", accounts => {
         }
 
         // expect revert on claiming with fake reward
-        const mined = submitReceipt.logs.find(log => log.event === 'Mined').args
+        const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
         const key = utils.minerToClaim(mined)
         const params = utils.paramsToClaim(mined)
         await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: key.address}), "#commitment");
@@ -382,7 +382,7 @@ async function expectEventClaim(call, txHash, miner, multiplier) {
     to: miner,
     value: reward.base.toString(),
   });
-  expectEvent(receipt, 'Rewarded', {
+  expectEvent(receipt, 'Claim', {
     memoHash: ENDURIO_HASH,
     payer: ZERO_ADDRESS,
     miner,

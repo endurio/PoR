@@ -115,7 +115,7 @@ contract("RefNetwork: Commission", accounts => {
           continue
         }
         ++hit
-        const rewarded = claimReceipt.logs.find(log => log.event === 'Rewarded').args.value
+        const rewarded = claimReceipt.logs.find(log => log.event === 'Claim').args.value
         expectEvent(claimReceipt, 'CommissionRoot', {
           payer: ZERO_ADDRESS,
           miner: txs[txHash].miner,
@@ -277,7 +277,7 @@ contract("RefNetwork: Commission", accounts => {
         const miner = txs[txHash].miner
         const submitReceipt = submitReceipts[txHash]
         const claimReceipt = await utils.claim(submitReceipt)
-        const rewarded = claimReceipt.logs.find(log => log.event === 'Rewarded').args.value
+        const rewarded = claimReceipt.logs.find(log => log.event === 'Claim').args.value
         const value = rewarded.mul(comRate).div(new BN(1e9))
         const com = claimReceipt.logs.find(log => log.event === 'CommissionPaid')
         if (!com) {

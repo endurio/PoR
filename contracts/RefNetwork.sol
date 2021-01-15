@@ -181,7 +181,7 @@ contract RefNetwork is DataStructure, Token, IRefNet {
 
         { // stack too deep
         (uint rewarded, bool empty) = _payByBrand(memoHash, payer, miner, amount);
-        emit Rewarded(memoHash, payer, miner, rewarded);
+        emit Claim(memoHash, payer, miner, rewarded);
         if (empty) {
             return;  // brand has no more fund to pay for commission
         }

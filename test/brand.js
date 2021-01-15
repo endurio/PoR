@@ -192,7 +192,7 @@ contract("BrandMarket", accounts => {
           to: miner,
           value: reward.toString(),
         });
-        expectEvent(receipt, 'Rewarded', {
+        expectEvent(receipt, 'Claim', {
           memoHash: FOOBAR_HASH,
           payer,
           miner,

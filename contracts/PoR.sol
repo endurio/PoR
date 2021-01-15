@@ -247,7 +247,7 @@ contract PoR is DataStructure, IERC20Events {
         uint amount = _getBrandReward(memoHash, params.payer, rewardRate);
 
         reward.commitment = bytes28(keccak256(abi.encodePacked(params.payer, amount, timestamp, pubkey)));
-        emit Mined(bytes32(blockHash), memoHash, params.payer, pubkey, amount, timestamp);
+        emit Submit(bytes32(blockHash), memoHash, params.payer, pubkey, amount, timestamp);
     }
 
     function _processMemo(
