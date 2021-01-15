@@ -2,6 +2,9 @@
 pragma solidity >=0.6.2;
 pragma experimental ABIEncoderV2;
 
+/** @title PoR */
+/** @author Zergity (https://endur.io) */
+
 import {BytesLib} from "./lib/bitcoin-spv/contracts/BytesLib.sol";
 import {BTCUtils} from "./lib/bitcoin-spv/contracts/BTCUtils.sol";
 import {CheckBitcoinSigs} from "./lib/bitcoin-spv/contracts/CheckBitcoinSigs.sol";

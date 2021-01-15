@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.2;
 
+/** @title Endurio */
+/** @author Zergity (https://endur.io) */
+
 // solium-disable security/no-inline-assembly
 
 import "./Token.sol";

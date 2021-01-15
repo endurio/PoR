@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.6.2;
 
+/** @title time */
+/** @author Zergity (https://endur.io) */
+
 import "./CapMath.sol";
 
 library time {

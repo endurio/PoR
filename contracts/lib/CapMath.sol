@@ -1,5 +1,8 @@
 pragma solidity ^0.6.2;
 
+/** @title CapMath */
+/** @author Zergity (https://endur.io) */
+
 import "./util.sol";
 
 library CapMath {

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.2;
 
+/** @title BrandMarket */
+/** @author Zergity (https://endur.io) */
+
 // solium-disable security/no-block-members
 
 import "./Token.sol";

@@ -1,5 +1,8 @@
 pragma solidity ^0.6.2;
 
+/** @title util */
+/** @author Zergity (https://endur.io) */
+
 import "@openzeppelin/contracts/math/SafeMath.sol";
 
 library util {

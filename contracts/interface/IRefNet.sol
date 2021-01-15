@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity >=0.6.2;
 
+/** @title IRefNet */
+/** @author Zergity (https://endur.io) */
+
 interface IRefNet {
     function reward(
         address miner,
