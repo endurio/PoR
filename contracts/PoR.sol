@@ -42,7 +42,7 @@ contract PoR is DataStructure, IERC20Events {
         bool    isPKH;
         bool    skipCommission;
         bytes32 pubX;
-        uint    pubY;
+        bytes32 pubY;
         uint    amount;
         uint    timestamp;
     }
@@ -318,11 +318,8 @@ contract PoR is DataStructure, IERC20Events {
     }
 
     // PKH from uncompressed, unprefixed 64-bytes pubic key
-    function _pkh(
-        bytes32 pubX,
-        uint    pubY
-    ) internal pure returns (bytes20 pkh) {
-        uint8 prefix = pubY & 1 == 1 ? 3 : 2;
+    function _pkh(bytes32 pubX, bytes32 pubY) internal pure returns (bytes20 pkh) {
+        uint8 prefix = uint(pubY) & 1 == 1 ? 3 : 2;
         bytes memory compressedPubkey = abi.encodePacked(prefix, pubX);
         return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
     }

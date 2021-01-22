@@ -344,7 +344,7 @@ contract("PoR", accounts => {
         await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: key.address}), "#commitment");
         await expectRevert(instPoR.claim({...params, isPKH: !params.isPKH}, {from: key.address}), "#commitment");
         await expectRevert(instPoR.claim({...params, pubX: DUMMY_HASH}, {from: key.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, pubY: (BigInt(params.pubY)-2n).toString()}, {from: key.address}), "!miner");
+        await expectRevert(instPoR.claim({...params, pubY: '0x'+(BigInt(params.pubY)-2n).toString(16)}, {from: key.address}), "!miner");
 
         // honest claim
         await expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner);
