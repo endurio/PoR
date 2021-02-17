@@ -13,6 +13,11 @@
   "scripts": {
     "compile": "truffle compile --all",
     "deploy": "truffle migrate --reset --network ${NODE_ENV:-local}",
+    "flatten": "yarn flatten:PoR && yarn flatten:RefNetwork && yarn flatten:BrandMarket && yarn flatten:Endurio",
+    "flatten:PoR": "truffle-flattener contracts/PoR.sol > flatten/PoR.sol",
+    "flatten:RefNetwork": "truffle-flattener contracts/RefNetwork.sol > flatten/RefNetwork.sol",
+    "flatten:BrandMarket": "truffle-flattener contracts/BrandMarket.sol > flatten/BrandMarket.sol",
+    "flatten:Endurio": "truffle-flattener contracts/Endurio.sol > flatten/Endurio.sol",
     "parser": "babel-eslint",
     "ganache": "fuser -k -n tcp 8545; ganache-cli --account=$npm_package_accA --account=$npm_package_accB --account=$npm_package_accC --account=$npm_package_accT --account=$npm_package_acc4 --account=$npm_package_acc3 --account=$npm_package_acc2 --account=$npm_package_acc1 --quiet --time 2020-05-17T08:33:15.000Z > /dev/null 2>&1 &",
     "test": "yarn ganache && truffle test --bail --network ${NODE_ENV:-local}",
