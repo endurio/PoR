@@ -13,6 +13,8 @@
   "scripts": {
     "compile": "truffle compile --all",
     "deploy": "truffle migrate --reset --network ${NODE_ENV:-local}",
+    "deploy:ropsten": "truffle migrate --reset --network ropsten",
+    "deploy:rinkeby": "truffle migrate --reset --network rinkeby",
     "flatten": "yarn flatten:PoR && yarn flatten:RefNetwork && yarn flatten:BrandMarket && yarn flatten:Endurio",
     "flatten:PoR": "truffle-flattener contracts/PoR.sol > flatten/PoR.sol",
     "flatten:RefNetwork": "truffle-flattener contracts/RefNetwork.sol > flatten/RefNetwork.sol",
@@ -30,7 +32,9 @@
   "author": "endur.io",
   "dependencies": {
     "@openzeppelin/contracts": "^3.1.0",
+    "optional-require": "^1.0.2",
     "truffle": "^5.1.31",
+    "truffle-privatekey-provider": "^1.5.0",
     "tslint": "^5.11.0",
     "web3": "1.0.0-beta.36",
     "yargs": "^16.1.1"
