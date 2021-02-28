@@ -1,6 +1,6 @@
 {
   "name": "por",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Endurio Proof of Reference",
   "accA": "0x443f917b8486e3f61320660b0f5f425a4a2c36fd658ecc325b755721c040d606,1000000000000000000000",
   "accB": "0x8c9f6ae199163dd93a735e80f51c36bde5ad63bd73bf37d45f78a063e3171b70,1000000000000000000000",
