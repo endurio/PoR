@@ -235,8 +235,7 @@ contract PoR is DataStructure, IERC20Events {
 
         uint32 rank = uint32(bytes4(keccak256(abi.encodePacked(blockHash, txid))));
         if (reward.rank != 0) {
-            // accept the same rank here to allow re-commiting the same tx to change the input index
-            require(rank <= reward.rank, "lost");
+            require(rank < reward.rank, "taken");
         }
         reward.rank = rank;
         }

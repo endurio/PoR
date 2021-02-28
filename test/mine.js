@@ -146,7 +146,7 @@ contract("PoR", accounts => {
       const ss = await snapshot.take();
       await utils.submitTx(losingTx)
       await utils.submitTx(winingTx)
-      await expectRevert(utils.submitTx(losingTx), 'lost');
+      await expectRevert(utils.submitTx(losingTx), 'taken');
       await snapshot.revert(ss);
     })
 
@@ -285,6 +285,8 @@ contract("PoR", accounts => {
         }
 
         const tx = bitcoinjs.Transaction.fromHex(txData.hex)
+
+        const ss = await snapshot.take()
         const promise = utils.submit({...params, inputIndex: 1}, outpoint, bounty)
         if (tx.ins.length == 1) {
           await expectRevert(promise, 'Vin read overrun')
@@ -295,6 +297,7 @@ contract("PoR", accounts => {
             await promise
           }
         }
+        await snapshot.revert(ss)
 
         // submit with bad header
         await expectRevert(utils.submit({

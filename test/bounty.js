@@ -169,11 +169,16 @@ contract("PoR: Bounty Mining", accounts => {
         const nIns = bitcoinjs.Transaction.fromHex(txData.hex).ins.length
         let submitReceipt
         for (let inputIndex = nIns-1; inputIndex >= 0; --inputIndex) {
-          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex});
-          submitReceipt = await utils.submit(params, outpoint, bounty)
-          if (inputIndex > 0) {
-            var hasInputIndexCase = true
+          if (inputIndex === 0) {
+            const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex})
+            submitReceipt = await utils.submit(params, outpoint, bounty)
+            continue
           }
+          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex})
+          const ss = await snapshot.take()
+          await utils.submit(params, outpoint, bounty)
+          await snapshot.revert(ss)
+          var hasInputIndexCase = true
         }
         await utils.timeToClaim(txHash)
         expectEventClaim(await utils.claim(submitReceipt), recipient, reward.bounty, payer, memoHash)
