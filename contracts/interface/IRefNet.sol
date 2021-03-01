@@ -10,7 +10,7 @@ interface IRefNet {
         address payer,
         uint amount,
         bytes32 memoHash,
-        bytes32 seed,       // this value will be hashed against memoHash to create an random number
+        bytes32 blockHash,  // this value will be hashed against memoHash to create an random number
         bool skipCommission
     ) external;
 }

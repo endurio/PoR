@@ -61,17 +61,18 @@ contract DataStructure {
         address indexed payer
     );
     event Submit(
-        bytes32         blockHash,
+        bytes32 indexed blockHash,
         bytes32 indexed memoHash,
-        address indexed payer,
         bytes32 indexed pubkey,
-        uint            amount,
+        address         payer,
+        uint            value,
         uint            timestamp
     );
     event Claim(
+        bytes32 indexed blockHash,
         bytes32 indexed memoHash,
-        address indexed payer,
         address indexed miner,
+        address         payer,
         uint            value
     );
     event CommissionSkip(

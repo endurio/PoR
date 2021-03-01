@@ -246,10 +246,11 @@ contract PoR is DataStructure, IERC20Events {
             require(timestamp - bounty[0].header.extractTimestamp() <= BOUNTY_TIME, "bounty: block too old");
         }
 
-        uint amount = _getBrandReward(memoHash, params.payer, rewardRate);
+        address payer = params.payer;
+        uint amount = _getBrandReward(memoHash, payer, rewardRate);
 
-        reward.commitment = bytes28(keccak256(abi.encodePacked(params.payer, amount, timestamp, pubkey)));
-        emit Submit(bytes32(blockHash), memoHash, params.payer, pubkey, amount, timestamp);
+        reward.commitment = bytes28(keccak256(abi.encodePacked(payer, amount, timestamp, pubkey)));
+        emit Submit(bytes32(blockHash), memoHash, pubkey, payer, amount, timestamp);
     }
 
     function _processMemo(

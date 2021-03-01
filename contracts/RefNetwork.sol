@@ -177,20 +177,20 @@ contract RefNetwork is DataStructure, Token, IRefNet {
         address payer,
         uint amount,
         bytes32 memoHash,
-        bytes32 seed,
+        bytes32 blockHash,
         bool skipCommission
     ) external override {
         require(msg.sender == address(this), "!internal");  // must be called from other implemenetation
 
         { // stack too deep
         (uint rewarded, bool empty) = _payByBrand(memoHash, payer, miner, amount);
-        emit Claim(memoHash, payer, miner, rewarded);
+        emit Claim(blockHash, memoHash, miner, payer, rewarded);
         if (empty) {
             return;  // brand has no more fund to pay for commission
         }
         }
 
-        uint uiSeed = uint(keccak256(abi.encodePacked(memoHash, seed)));
+        uint uiSeed = uint(keccak256(abi.encodePacked(memoHash, blockHash)));
 
         // there's always 1/32 chance that the raw commission will go to root
         if (uiSeed % ROOT_COM_RATE == 0) {

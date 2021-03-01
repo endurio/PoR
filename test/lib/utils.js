@@ -260,11 +260,11 @@ module.exports = {
     if (mined.logs) {
       mined = mined.logs.find(log => log.event === 'Submit').args
     }
-    const { blockHash, memoHash, payer, amount, timestamp } = mined;
+    const { blockHash, memoHash, payer, value, timestamp } = mined;
     const key = this.minerToClaim(mined)
     const params = {
       blockHash, memoHash, payer,
-      amount: amount.toString(),
+      amount: value.toString(),
       timestamp: timestamp.toString(),
       isPKH: this.isPKH(mined),
       pubX: '0x'+key.public.substring(0, 64),
