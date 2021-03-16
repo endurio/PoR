@@ -34,8 +34,8 @@ contract("BrandMarket", accounts => {
   before('should chain time be in the past', async () => {
     const chainTimestamp = Number(await time.latest())
     let oldestTimestamp // find the oldest block from the data
-    for (const raw of Object.values(blocks)) {
-      const block = bitcoinjs.Block.fromHex(raw)
+    for (const hash of Object.keys(blocks)) {
+      const block = utils.getBlock(hash)
       if (!oldestTimestamp || block.timestamp < oldestTimestamp) {
         oldestTimestamp = block.timestamp
       }

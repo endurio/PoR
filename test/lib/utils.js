@@ -8,21 +8,6 @@ const { time, expectRevert } = require('@openzeppelin/test-helpers');
 const { txs, keys } = require('../data/all');
 const { min } = require('moment');
 
-function loadBlockData() {
-  const blocks = {}
-  const fs = require('fs');
-  fs.readdirSync('./test/data/blocks').forEach(blockHash => {
-    blocks[blockHash] = fs.readFileSync('./test/data/blocks/'+blockHash).toString()
-  });
-  return blocks
-}
-const blocks = loadBlockData()
-
-const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
-var inst;
-var instPoR;
-
 if (!String.prototype.pad) {
   Object.defineProperty(String.prototype, 'pad', {
     enumerable: false,
@@ -47,6 +32,33 @@ if (!String.prototype.reverseHex) {
   });
 }
 
+function loadBlockData() {
+  const blocks = {}
+  const fs = require('fs');
+  fs.readdirSync('./test/data/blocks').forEach(blockHash => {
+    blocks[blockHash] = fs.readFileSync('./test/data/blocks/'+blockHash).toString()
+  });
+  fs.readdirSync('./test/data/block').forEach(blockHash => {
+    const block = JSON.parse(fs.readFileSync('./test/data/block/'+blockHash))
+    // block.transactions = block.txs
+    const { time, mrkl_root, prev_block, ver, ...remain } = block
+    blocks[blockHash] = {
+      timestamp: new Date(time).getTime(),
+      merkleRoot: mrkl_root.reverseHex(),
+      prevBlock: prev_block.reverseHex(),
+      version: ver,
+      ...remain,
+    }
+  });
+  return blocks
+}
+const blocks = loadBlockData()
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+var inst;
+var instPoR;
+
 module.exports = {
   async initialize() {
     const Endurio = artifacts.require("Endurio");
@@ -57,6 +69,33 @@ module.exports = {
 
   loadBlockData() {
     return loadBlockData()
+  },
+
+  getBlock(hash) {
+    const data = blocks[hash]
+    if (typeof data === 'string') {
+      return bitcoinjs.Block.fromHex(data)
+    }
+    return data
+  },
+
+  getHeader(hash) {
+    const data = blocks[hash]
+    if (typeof data === 'string') {
+      return data.substring(0, 160)
+    }
+    return _extractHeader(data)
+    function _extractHeader(block) {
+      const { version, prevBlock, merkleRoot, timestamp, bits, nonce } = block
+      return ''.concat(
+        nonce.toString(16).padStart(8, '0'),
+        bits.toString(16).padStart(8, '0'),
+        timestamp.toString(16).padStart(8, '0'),
+        merkleRoot.reverseHex(),
+        prevBlock.reverseHex(),
+        version.toString(16).padStart(8, '0'),
+      ).reverseHex()
+    }
   },
 
   submitTx(txHash, payer, brand) {
@@ -153,11 +192,11 @@ module.exports = {
       return []
     }
 
-    const blockData = blocks[txs[txData.bounty].block]
+    const blockData = this.getBlock(txs[txData.bounty].block)
     const [merkleProof, merkleIndex] = getMerkleProof(blockData, txData.bounty);
     const [version, vin, vout, locktime] = this.extractTxParams(txs[txData.bounty].hex);
     const bounty = {
-      header: '0x'+blockData.substring(0, 160),
+      header: '0x'+this.getHeader(txs[txData.bounty].block),
       merkleProof, merkleIndex,
       version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
       locktime: parseInt(locktime.toString(16).pad(8).reverseHex(), 16),
@@ -180,7 +219,7 @@ module.exports = {
 
   _prepareSubmitTx({txHash, brand, payer=ZERO_ADDRESS, inputIndex=0, pubkeyPos}) {
     const txData = txs[txHash];
-    const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+    const block = this.getBlock(txData.block);
     const [merkleProof, merkleIndex] = getMerkleProof(block, txHash);
 
     const tx = bitcoinjs.Transaction.fromHex(txData.hex);
@@ -206,7 +245,7 @@ module.exports = {
     }
  
     return {
-      header: '0x'+blocks[txData.block].substring(0, 160),
+      header: '0x'+this.getHeader(txData.block),
       merkleIndex,
       merkleProof,
       version: parseInt(version.toString(16).pad(8).reverseHex(), 16),
@@ -316,7 +355,7 @@ module.exports = {
 
   getExpectedReward(txHash, rate = 1) {
     const txData = txs[txHash]
-    const block = bitcoinjs.Block.fromHex(blocks[txData.block])
+    const block = this.getBlock(txData.block)
 
     const MAX_TARGET = 1n<<240n;
     const target = this.bitsToTarget(block.bits)
@@ -327,7 +366,7 @@ module.exports = {
       var bounty = MAX_TARGET * BigInt(nBounty*2) / target
 
       // retargeting
-      const bountyBlock = bitcoinjs.Block.fromHex(blocks[txs[txData.bounty].block])
+      const bountyBlock = this.getBlock(txs[txData.bounty].block)
       const bountyTarget = this.bitsToTarget(bountyBlock.bits)
       const targetRate = bountyTarget / target
       if (targetRate >= 2n) {
@@ -377,17 +416,15 @@ function findMemoIndex(outs) {
 }
 
 function getMerkleProof(block, txid) {
-  if (_.isString(block)) {
-    if (block.length < 80) {
-      block = blocks[block]
+  if (block.txids) {
+    var txs = block.txids.map(hash => Buffer.from(hash, 'hex').reverse())
+    var index = block.txids.findIndex(hash => hash == txid)
+  } else {
+    var txs = []
+    for (const [i, tx] of Object.entries(block.transactions)) {
+      if (tx.getId() === txid) { var index = i >>> 0; } // cast to uint from string
+      txs.push(Buffer.from(tx.getId(), 'hex').reverse());
     }
-    block = bitcoinjs.Block.fromHex(block)
-  }
-  let index = -1;
-  const txs = [];
-  for (const [i, tx] of Object.entries(block.transactions)) {
-    if (tx.getId() === txid) { index = i >>> 0; } // cast to uint from string
-    txs.push(Buffer.from(tx.getId(), 'hex').reverse());
   }
 
   expect(index).to.be.at.least(0, 'tx not found');

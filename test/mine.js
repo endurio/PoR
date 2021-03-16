@@ -31,8 +31,8 @@ contract("PoR", accounts => {
   before('should chain time be in the past', async () => {
     const chainTimestamp = Number(await time.latest())
     let oldestTimestamp // find the oldest block from the data
-    for (const raw of Object.values(blocks)) {
-      const block = bitcoinjs.Block.fromHex(raw)
+    for (const hash of Object.keys(blocks)) {
+      const block = utils.getBlock(hash)
       if (!oldestTimestamp || block.timestamp < oldestTimestamp) {
         oldestTimestamp = block.timestamp
       }
@@ -61,6 +61,11 @@ contract("PoR", accounts => {
     const tests = [{
       desc: 'x3',
       tx: '3ef4453b2cfff417c4c37e3fa2ec0922162262d49ffe5d43f8c010709cfb4b11',
+      params: {memoLength: ENDURIO.length},
+      expect: {submitRevert: "insufficient work"},
+    }, {
+      desc: 'x3',
+      tx: 'd9234565991092880eebf40d941dec83afe7dc859cfb8e1d49029b2254e405e1',
       params: {memoLength: ENDURIO.length},
       expect: {submitRevert: "insufficient work"},
     }, {
