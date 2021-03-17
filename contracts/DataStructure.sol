@@ -142,5 +142,5 @@ struct Node {
 
 struct Reward {
     uint32  rank;
-    bytes28 commitment;     // keccak256(abi.encodePacked(payer, amount, timestamp, (pubX|pkh)))
+    bytes28 commitment;     // keccak256(abi.encodePacked(payer, amount, timestamp, (pkk|pkh)))
 }

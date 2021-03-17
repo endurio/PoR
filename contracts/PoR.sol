@@ -60,7 +60,7 @@ contract PoR is DataStructure, IERC20Events {
         if (params.isPKH) {
             pubkey = bytes32(_pkh(params.pubX, params.pubY));
         } else {
-            pubkey = params.pubX;
+            pubkey = keccak256(_compressPK(params.pubX, params.pubY));
         }
         require(commitment == bytes28(keccak256(abi.encodePacked(params.payer, params.amount, params.timestamp, pubkey))), "#commitment");
 
@@ -170,7 +170,7 @@ contract PoR is DataStructure, IERC20Events {
             rewardRate = MAX_TARGET;
         }
 
-        bytes32 pubkey;     // can be either 20-bytes pkh or 32-bytes pubkey x
+        bytes32 pubkey;     // can be either 20-bytes pkh or 32 bytes pkk (public key keccak)
         { // stack too deep
         // store the outpoint to claim the reward later
         uint inputIndex = params.inputIndex;
@@ -178,10 +178,10 @@ contract PoR is DataStructure, IERC20Events {
 
         if (params.pubkeyPos > 0) {
             // custom P2SH redeem script with manual compressed PubKey position
-            pubkey = input.slice(32+4+1+params.pubkeyPos+1, 32).toBytes32();
+            pubkey = input.keccak256Slice(32+4+1+params.pubkeyPos, 33);
         } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
             // redeem script for P2PKH
-            pubkey = input.slice(input.length-33-4+1, 32).toBytes32();
+            pubkey = input.keccak256Slice(input.length-33-4, 33);
         } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
             // redeem script for P2SH-P2WPKH
             pubkey = input.slice(32+4+4, 20).toBytes32() & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000;
@@ -321,8 +321,12 @@ contract PoR is DataStructure, IERC20Events {
 
     // PKH from uncompressed, unprefixed 64-bytes pubic key
     function _pkh(bytes32 pubX, bytes32 pubY) internal pure returns (bytes20 pkh) {
-        uint8 prefix = uint(pubY) & 1 == 1 ? 3 : 2;
-        bytes memory compressedPubkey = abi.encodePacked(prefix, pubX);
+        bytes memory compressedPubkey = _compressPK(pubX, pubY);
         return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
+    }
+
+    function _compressPK(bytes32 pubX, bytes32 pubY) internal pure returns (bytes memory) {
+        uint8 prefix = uint(pubY) & 1 == 1 ? 3 : 2;
+        return abi.encodePacked(prefix, pubX);
     }
 }

@@ -4,6 +4,8 @@ const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
 const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
+const Web3 = require('web3')
+const web3 = new Web3()
 
 const { txs, keys } = require('../data/all');
 const { min } = require('moment');
@@ -331,12 +333,20 @@ module.exports = {
     if (this.isPKH(mined)) {
       var key = keys.find(key => key.pkh == mined.pubkey.substring(2, 2+40))
     } else {
-      var key = keys.find(key => key.public.startsWith(mined.pubkey.substring(2)))
+      var key = keys.find(key => this.pkk(key.public) == mined.pubkey)
     }
     if (!key) {
       throw 'missing miner for: ' + mined.pubkey
     }
     return key
+  },
+
+  // public key keccak
+  pkk(pubkey) {
+    const lastByte = parseInt(pubkey.substr(pubkey.length-2), 16)
+    const prefix = (lastByte & 1) ? '0x03' : '0x02'
+    const cpk = prefix + this.strip0x(pubkey).substr(0, 64)
+    return web3.utils.keccak256(cpk)
   },
 
   addressCompare(a, b) {
