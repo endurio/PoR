@@ -358,7 +358,7 @@ contract("PoR", accounts => {
         await expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner);
 
         // double claim
-        await expectRevert(utils.claim(submitReceipt), "#commitment");
+        await expectRevert(utils.claim(submitReceipt), "claimed");
       }
 
       expect(tooSoonTestsCount).to.be.gt(0, "should test data cover `too soon` case");

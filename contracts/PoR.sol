@@ -53,6 +53,8 @@ contract PoR is DataStructure, IERC20Events {
         require(!_submittable(params.timestamp), "too soon");
 
         Reward storage reward = rewards[params.blockHash][params.memoHash];
+        bytes28 commitment = reward.commitment;
+        require(commitment != 0, "claimed");
 
         bytes32 pubkey;
         if (params.isPKH) {
@@ -60,7 +62,7 @@ contract PoR is DataStructure, IERC20Events {
         } else {
             pubkey = params.pubX;
         }
-        require(reward.commitment == bytes28(keccak256(abi.encodePacked(params.payer, params.amount, params.timestamp, pubkey))), "#commitment");
+        require(commitment == bytes28(keccak256(abi.encodePacked(params.payer, params.amount, params.timestamp, pubkey))), "#commitment");
 
         address miner = CheckBitcoinSigs.accountFromPubkey(abi.encodePacked(params.pubX, params.pubY));
         require(miner == msg.sender, "!miner");
