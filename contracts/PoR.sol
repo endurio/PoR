@@ -41,8 +41,7 @@ contract PoR is DataStructure, IERC20Events {
         address payer;
         bool    isPKH;
         bool    skipCommission;
-        bytes32 pubX;
-        bytes32 pubY;
+        bytes   pubkey;
         uint    amount;
         uint    timestamp;
     }
@@ -56,15 +55,15 @@ contract PoR is DataStructure, IERC20Events {
         bytes28 commitment = reward.commitment;
         require(commitment != 0, "claimed");
 
-        bytes32 pubkey;
+        bytes32 pkCommitment;
         if (params.isPKH) {
-            pubkey = bytes32(_pkh(params.pubX, params.pubY));
+            pkCommitment = bytes32(_pkh(params.pubkey));
         } else {
-            pubkey = keccak256(_compressPK(params.pubX, params.pubY));
+            pkCommitment = keccak256(_compressPK(params.pubkey));
         }
-        require(commitment == bytes28(keccak256(abi.encodePacked(params.payer, params.amount, params.timestamp, pubkey))), "#commitment");
+        require(commitment == bytes28(keccak256(abi.encodePacked(params.payer, params.amount, params.timestamp, pkCommitment))), "#commitment");
 
-        address miner = CheckBitcoinSigs.accountFromPubkey(abi.encodePacked(params.pubX, params.pubY));
+        address miner = CheckBitcoinSigs.accountFromPubkey(params.pubkey.slice(0, 64));
         require(miner == msg.sender, "!miner");
 
         IRefNet(address(this)).reward(miner, params.payer, params.amount, params.memoHash, params.blockHash, params.skipCommission);
@@ -320,13 +319,13 @@ contract PoR is DataStructure, IERC20Events {
     }
 
     // PKH from uncompressed, unprefixed 64-bytes pubic key
-    function _pkh(bytes32 pubX, bytes32 pubY) internal pure returns (bytes20 pkh) {
-        bytes memory compressedPubkey = _compressPK(pubX, pubY);
+    function _pkh(bytes memory pubkey) internal pure returns (bytes20 pkh) {
+        bytes memory compressedPubkey = _compressPK(pubkey);
         return ripemd160(abi.encodePacked(sha256(compressedPubkey)));
     }
 
-    function _compressPK(bytes32 pubX, bytes32 pubY) internal pure returns (bytes memory) {
-        uint8 prefix = uint(pubY) & 1 == 1 ? 3 : 2;
-        return abi.encodePacked(prefix, pubX);
+    function _compressPK(bytes memory pubkey) internal pure returns (bytes memory) {
+        uint8 prefix = uint8(pubkey[63]) & 1 == 1 ? 3 : 2;
+        return abi.encodePacked(prefix, pubkey.slice(0, 32));
     }
 }

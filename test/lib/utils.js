@@ -312,8 +312,7 @@ module.exports = {
       amount: value.toString(),
       timestamp: timestamp.toString(),
       isPKH: this.isPKH(mined),
-      pubX: '0x'+key.public.substring(0, 64),
-      pubY: '0x'+key.public.substring(64),
+      pubkey: '0x'+key.public,
       skipCommission: false,
     }
     return params;
