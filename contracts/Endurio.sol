@@ -37,11 +37,11 @@ contract Endurio is DataStructure, Token {
         // All ERC20 functions are not upgradable
 
         // generator script: change the contract name in export part
-        // (export CONTRACT=PoR; cd ..; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
+        // (export CONTRACT=PoR; cat ./build/contracts/$CONTRACT.json | sed -ne '/"legacyAST": {/,$p' | grep -A7 functionSelector | grep 'functionSelector\|"name": "' | sed 's/[",]//g' | sed 's/.*: //g' | sed 'N;s/\n/ /' | awk '{print "impls[0x"$0}' | sed "s/ /] = impl$CONTRACT;\t\/\/ /g")
         impls[0x0af77eb1] = implBrandMarket;    // activate
         impls[0x22eee84c] = implBrandMarket;    // deactivate
         impls[0x56cb121d] = implBrandMarket;    // queryCampaign
-        impls[0x4d0a477e] = implPoR;    // claim
+        impls[0x6e52395b] = implPoR;    // claim
         impls[0xf4b0bafa] = implPoR;    // submit
         impls[0x7a0ca1e2] = implRefNetwork;     // attach
         impls[0xe5d9c0ad] = implRefNetwork;     // update

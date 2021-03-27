@@ -305,13 +305,13 @@ module.exports = {
     if (mined.logs) {
       mined = mined.logs.find(log => log.event === 'Submit').args
     }
-    const { blockHash, memoHash, payer, value, timestamp } = mined;
+    const { blockHash, memoHash, pkc, payer, value, timestamp } = mined;
     const key = this.minerToClaim(mined)
     const params = {
       blockHash, memoHash, payer,
       amount: value.toString(),
       timestamp: timestamp.toString(),
-      isPKH: this.isPKH(mined),
+      pkc,
       pubkey: '0x'+key.public,
       skipCommission: false,
     }
@@ -322,7 +322,7 @@ module.exports = {
     if (mined.logs) {
       mined = mined.logs.find(log => log.event === 'Submit').args
     }
-    return mined.pubkey.substring(2+40) == '000000000000000000000000'
+    return mined.pkc.substring(2+40) == '000000000000000000000000'
   },
 
   minerToClaim(mined) {
@@ -330,9 +330,9 @@ module.exports = {
       mined = mined.logs.find(log => log.event === 'Submit').args
     }
     if (this.isPKH(mined)) {
-      var key = keys.find(key => key.pkh == mined.pubkey.substring(2, 2+40))
+      var key = keys.find(key => key.pkh == mined.pkc.substring(2, 2+40))
     } else {
-      var key = keys.find(key => this.pkk(key.public) == mined.pubkey)
+      var key = keys.find(key => this.pkk(key.public) == mined.pkc)
     }
     if (!key) {
       throw 'missing miner for: ' + mined.pubkey

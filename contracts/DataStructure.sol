@@ -63,7 +63,7 @@ contract DataStructure {
     event Submit(
         bytes32 indexed blockHash,
         bytes32 indexed memoHash,
-        bytes32 indexed pubkey,
+        bytes32 indexed pkc,        // public commitment: either 20 bytes PKH or 32 bytes PK-Keccak
         address         payer,
         uint            value,
         uint            timestamp

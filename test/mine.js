@@ -8,6 +8,7 @@ const utils = require('./lib/utils');
 const { thousands } = require('../tools/lib/big');
 
 const { keys, txs } = require('./data/all');
+const { strip0x } = require('./lib/utils');
 const blocks = utils.loadBlockData()
 
 const Endurio = artifacts.require("Endurio");
@@ -22,6 +23,7 @@ const ENDURIO_HASH = '0x022086784c27d04e67d08b0afbf4f0459c59a00094bd15dab852f4fa
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DUMMY_ADDRESS = '0x0123456789012345678901234567890123456789';
+const ZERO_HASH = '0x0000000000000000000000000000000000000000000000000000000000000000';
 const DUMMY_HASH = '0x0123456789012345678901234567890123456789012345678901234567890123';
 
 contract("PoR", accounts => {
@@ -350,7 +352,7 @@ contract("PoR", accounts => {
         await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: key.address}), "#commitment");
         await expectRevert(instPoR.claim({...params, amount: params.amount+1}, {from: key.address}), "#commitment");
         await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: key.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, isPKH: !params.isPKH}, {from: key.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, pkc: utils.isPKH(mined) ? DUMMY_HASH : ZERO_HASH}, {from: key.address}), "#commitment");
 
         const pubX = params.pubkey.substr(2, 64)
         const pubY = params.pubkey.substr(66, 64)
