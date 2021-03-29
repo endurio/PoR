@@ -51,21 +51,40 @@ contract PoR is DataStructure, IERC20Events {
     ) external {
         require(!_submittable(params.timestamp), "too soon");
 
-        Reward storage reward = rewards[params.blockHash][params.memoHash];
-        bytes28 commitment = reward.commitment;
-        require(commitment != 0, "claimed");
+        { // stack too deep
+            Reward storage reward = rewards[params.blockHash][params.memoHash];
+            bytes28 commitment = reward.commitment;
+            require(commitment != 0, "claimed");
 
-        bytes32 pkc;
-        if (uint96(uint(params.pkc)) == 0) {
-            pkc = bytes32(_pkh(params.pubkey));
-        } else {
-            pkc = keccak256(_compressPK(params.pubkey));
+            { // stack too deep
+                bytes32 pkc;
+                if (uint96(uint(params.pkc)) == 0) {
+                    pkc = bytes32(_pkh(params.pubkey));
+                } else {
+                    pkc = keccak256(_compressPK(params.pubkey));
+                }
+                require(commitment == bytes28(keccak256(abi.encodePacked(pkc, params.payer, params.amount, params.timestamp))), "#commitment");
+            }
         }
 
-        require(commitment == bytes28(keccak256(abi.encodePacked(pkc, params.payer, params.amount, params.timestamp))), "#commitment");
-
         address miner = CheckBitcoinSigs.accountFromPubkey(params.pubkey.slice(0, 64));
-        require(miner == msg.sender, "!miner");
+
+        // Not claimed by the miner, pubY must be verify by either:
+        //   1. providing any hash and signature of the miner
+        //   2. miner address must contain some non-dust native coin (tx.gasprice*21000)
+        if (miner != msg.sender) {
+            if (params.pubkey.length > 64) {
+                address signer = ecrecover(
+                    params.pubkey.slice(64, 32).toBytes32(),
+                    uint8(params.pubkey[64+32]),
+                    params.pubkey.slice(64+32+1, 32).toBytes32(),
+                    params.pubkey.slice(64+32+32+1, 32).toBytes32()
+                );
+                require(miner == signer, "#witness");
+            } else {
+                require(miner.balance >= tx.gasprice * 21000, "!miner");
+            }
+        }
 
         IRefNet(address(this)).reward(miner, params.payer, params.amount, params.memoHash, params.blockHash, params.skipCommission);
         delete rewards[params.blockHash][params.memoHash];

@@ -4,11 +4,11 @@ const merkle = require('../vendor/merkle');
 const bitcoinjs = require('bitcoinjs-lib');
 const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
+const ethers = require('ethers')
 const Web3 = require('web3')
 const web3 = new Web3()
 
 const { txs, keys } = require('../data/all');
-const { min } = require('moment');
 
 if (!String.prototype.pad) {
   Object.defineProperty(String.prototype, 'pad', {
@@ -340,6 +340,50 @@ module.exports = {
     return key
   },
 
+  nonMinerToClaim(mined) {
+    if (mined.logs) {
+      mined = mined.logs.find(log => log.event === 'Submit').args
+    }
+    if (this.isPKH(mined)) {
+      var key = keys.find(key => key.pkh != mined.pkc.substring(2, 2+40))
+    } else {
+      var key = keys.find(key => this.pkk(key.public) != mined.pkc)
+    }
+    if (!key) {
+      throw 'missing non-miner for: ' + mined.pubkey
+    }
+    return key
+  },
+
+  extractWitness(txHash) {
+    const tx = bitcoinjs.Transaction.fromHex(txs[txHash].hex)
+    for (let i = 0; i < tx.ins.length; ++i) {
+      try {
+        var { sig, pubkey, hash } = extractInputWitness(tx, 0)
+        break
+      } catch(err) {
+        console.error(err)
+      }
+    }
+    if (!sig) {
+      return
+    }
+    const R = sig.signature.slice(0, 32)
+    const S = sig.signature.slice(32)
+
+    for (const v of [27, 28]) {
+      const pk = ethers.utils.recoverPublicKey(hash, {
+        v,
+        r: '0x'+R.toString('hex'),
+        s: '0x'+S.toString('hex'),
+      })
+      if (pk.substr(4, 64) == pubkey.toString('hex').substr(2, 64)) {
+        return Buffer.concat([hash, Buffer.from([v]), sig.signature])
+      }
+    }
+    return
+  },
+
   // public key keccak
   pkk(pubkey) {
     const lastByte = parseInt(pubkey.substr(pubkey.length-2), 16)
@@ -460,4 +504,61 @@ function stripTxWitness(hex) {
     tx.setWitness(i, []);
   }
   return tx.toHex();
+}
+
+function extractInputWitness(tx, i) {
+	const input = tx.ins[i]
+	// console.log(`\tinput`, input)
+	const { sig, pubkey } = extractInputSignature(input)
+	if (!sig || !pubkey) {
+		throw 'unable to extract signature and pubkey from input'
+	}
+	if (!sig) {
+		throw 'no signature'
+	}
+
+	// input tx hash is recorded reversed in the tx binary
+	const inputTxHash = Buffer.alloc(input.hash.length, input.hash, 'hex').reverse().toString('hex')
+	if (!txs[inputTxHash]) {
+		throw 'prev output tx unavailable: ' + inputTxHash
+	}
+	const dxHex = txs[inputTxHash].hex
+	const dx = bitcoinjs.Transaction.fromHex(dxHex)
+	const prevOut = dx.outs[input.index]
+
+	if (input.script.length > 0) {
+		var hash = tx.hashForSignature(i, prevOut.script, sig.hashType)
+	} else {
+		const signingScript = bitcoinjs.payments.p2pkh({ hash: prevOut.script.slice(2) }).output;
+		var hash = tx.hashForWitnessV0(i, signingScript, prevOut.value, sig.hashType)
+	}
+
+  // verify the correctness
+  const keyPair = bitcoinjs.ECPair.fromPublicKey(pubkey);
+  if (!keyPair.verify(hash, sig.signature)) {
+    throw 'unsupported transaction type'
+  }
+
+	return { sig, pubkey, hash }
+
+  function extractInputSignature(input) {
+    if (input.witness.length > 0) {
+      var chunks = input.witness
+      var itemName = 'script chunk'
+    } else {
+      var chunks = bitcoinjs.script.decompile(input.script)
+      var itemName = 'witness'
+    }
+    const ret = {}
+    for (const chunk of chunks) {
+      if (Buffer.isBuffer(chunk) && bitcoinjs.script.isCanonicalScriptSignature(chunk)) {
+        ret.sig = bitcoinjs.script.signature.decode(chunk)
+      } else if (Buffer.isBuffer(chunk) && bitcoinjs.script.isCanonicalPubKey(chunk)) {
+        ret.pubkey = chunk
+      } else {
+        console.log(`ignore unknown ${itemName}`, web3.utils.bytesToHex(chunk))
+      }
+    }
+    return ret
+  }
 }
