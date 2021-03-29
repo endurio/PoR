@@ -182,12 +182,12 @@ contract RefNetwork is DataStructure, Token, IRefNet {
     ) external override {
         require(msg.sender == address(this), "!internal");  // must be called from other implemenetation
 
-        { // stack too deep
-        (uint rewarded, bool empty) = _payByBrand(memoHash, payer, miner, amount);
-        emit Claim(blockHash, memoHash, miner, payer, rewarded);
-        if (empty) {
-            return;  // brand has no more fund to pay for commission
-        }
+        {
+            (uint rewarded, bool empty) = _payByBrand(memoHash, payer, miner, amount);
+            emit Claim(blockHash, memoHash, miner, payer, rewarded);
+            if (empty) {
+                return;  // brand has no more fund to pay for commission
+            }
         }
 
         uint uiSeed = uint(keccak256(abi.encodePacked(memoHash, blockHash)));

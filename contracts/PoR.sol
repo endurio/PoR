@@ -51,12 +51,12 @@ contract PoR is DataStructure, IERC20Events {
     ) external {
         require(!_submittable(params.timestamp), "too soon");
 
-        { // stack too deep
+        {
             Reward storage reward = rewards[params.blockHash][params.memoHash];
             bytes28 commitment = reward.commitment;
             require(commitment != 0, "claimed");
 
-            { // stack too deep
+            {
                 bytes32 pkc;
                 if (uint96(uint(params.pkc)) == 0) {
                     pkc = bytes32(_pkh(params.pubkey));
@@ -150,30 +150,30 @@ contract PoR is DataStructure, IERC20Events {
             uint inValue;
             uint firstInputSize;
 
-            { // stack too deep
-            bytes32[] memory outpointHash;
-            uint[] memory outpointIdx;
-            (firstInputSize, outpointHash, outpointIdx) = params.vin.processBountyInputs();
-            require(outpointHash.length == outpoint.length, 'bounty: outpoints count mismatch');
-            for (uint i = 0; i < outpointHash.length; ++i) {
-                require (outpointHash[i] ==
-                    ValidateSPV.calculateTxId(
-                        outpoint[i].version,
-                        outpoint[i].vin,
-                        outpoint[i].vout,
-                        outpoint[i].locktime
-                    ), 'bounty: inputs mismatch');
-                inValue += outpoint[i].vout.extractOutputAtIndex(outpointIdx[i]).extractValue(); // unsafe
-            }
+            {
+                bytes32[] memory outpointHash;
+                uint[] memory outpointIdx;
+                (firstInputSize, outpointHash, outpointIdx) = params.vin.processBountyInputs();
+                require(outpointHash.length == outpoint.length, 'bounty: outpoints count mismatch');
+                for (uint i = 0; i < outpointHash.length; ++i) {
+                    require (outpointHash[i] ==
+                        ValidateSPV.calculateTxId(
+                            outpoint[i].version,
+                            outpoint[i].vin,
+                            outpoint[i].vout,
+                            outpoint[i].locktime
+                        ), 'bounty: inputs mismatch');
+                    inValue += outpoint[i].vout.extractOutputAtIndex(outpointIdx[i]).extractValue(); // unsafe
+                }
 
-            bytes32 recipient = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
-            require(uint(keccak256(abi.encodePacked(outpointHash[0], recipient))) % RECIPIENT_RATE == 0, "bounty: unacceptable recipient");
-            require(ValidateSPV.prove(
-                recipient,
-                bounty[0].header.extractMerkleRootLE().toBytes32(),
-                bounty[0].merkleProof,
-                bounty[0].merkleIndex
-            ), "bounty: invalid merkle proof");
+                bytes32 recipient = ValidateSPV.calculateTxId(bounty[0].version, bounty[0].vin, bounty[0].vout, bounty[0].locktime);
+                require(uint(keccak256(abi.encodePacked(outpointHash[0], recipient))) % RECIPIENT_RATE == 0, "bounty: unacceptable recipient");
+                require(ValidateSPV.prove(
+                    recipient,
+                    bounty[0].header.extractMerkleRootLE().toBytes32(),
+                    bounty[0].merkleProof,
+                    bounty[0].merkleIndex
+                ), "bounty: invalid merkle proof");
             }
 
             (opret, rewardRate) = params.vout.processBountyOutputs(
@@ -190,75 +190,74 @@ contract PoR is DataStructure, IERC20Events {
         }
 
         bytes32 pkc;     // public commitment: either 20 bytes PKH or 32 bytes PK-Keccak
-        { // stack too deep
-        // store the outpoint to claim the reward later
-        uint inputIndex = params.inputIndex;
-        bytes memory input = params.vin.extractInputAtIndex(inputIndex);
+        {
+            // store the outpoint to claim the reward later
+            uint inputIndex = params.inputIndex;
+            bytes memory input = params.vin.extractInputAtIndex(inputIndex);
 
-        if (params.pubkeyPos > 0) {
-            // custom P2SH redeem script with manual compressed PubKey position
-            pkc = input.keccak256Slice(32+4+1+params.pubkeyPos, 33);
-        } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
-            // redeem script for P2PKH
-            pkc = input.keccak256Slice(input.length-33-4, 33);
-        } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
-            // redeem script for P2SH-P2WPKH
-            pkc = input.slice(32+4+4, 20).toBytes32() & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000;
-        } else {
-            // redeem script for P2WPKH
-            require(outpoint.length > 0, "!outpoint");
-            if (bounty.length == 0) {
-                bytes32 otxid = ValidateSPV.calculateTxId(outpoint[0].version, outpoint[0].vin, outpoint[0].vout, outpoint[0].locktime);
-                require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
-                inputIndex = 0;
+            if (params.pubkeyPos > 0) {
+                // custom P2SH redeem script with manual compressed PubKey position
+                pkc = input.keccak256Slice(32+4+1+params.pubkeyPos, 33);
+            } else if (input.length >= 32+4+1+33+4 && input[input.length-1-33-4] == 0x21) {
+                // redeem script for P2PKH
+                pkc = input.keccak256Slice(input.length-33-4, 33);
+            } else if (input.keccak256Slice(32+4, 4) == keccak256(hex"17160014")) {
+                // redeem script for P2SH-P2WPKH
+                pkc = input.slice(32+4+4, 20).toBytes32() & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000;
+            } else {
+                // redeem script for P2WPKH
+                require(outpoint.length > 0, "!outpoint");
+                if (bounty.length == 0) {
+                    bytes32 otxid = ValidateSPV.calculateTxId(outpoint[0].version, outpoint[0].vin, outpoint[0].vout, outpoint[0].locktime);
+                    require(otxid == input.extractInputTxIdLE(), "outpoint mismatch");
+                    inputIndex = 0;
+                }
+                uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
+                bytes memory output = outpoint[inputIndex].vout.extractOutputAtIndex(oIdx);
+                pkc = _extractPKH(output, outpoint[inputIndex].pkhPos).toBytes32() & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000;
             }
-            uint oIdx = input.extractTxIndexLE().reverseEndianness().toUint32(0);
-            bytes memory output = outpoint[inputIndex].vout.extractOutputAtIndex(oIdx);
-            pkc = _extractPKH(output, outpoint[inputIndex].pkhPos).toBytes32() & 0xFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000000;
-        }
         }
 
         bytes32 memoHash;
+        {
+            uint target = params.header.extractTarget();
 
-        { // stack too deep
-        uint target = params.header.extractTarget();
+            if (bounty.length > 0) {
+                uint bountyTarget = bounty[0].header.extractTarget();
+                // Require that the header has sufficient work
+                require(uint(bounty[0].header.hash256()).reverseUint256() <= bountyTarget, "bounty: insufficient work");
+                // bounty reference block must have the same target as the mining block
 
-        if (bounty.length > 0) {
-            uint bountyTarget = bounty[0].header.extractTarget();
-            // Require that the header has sufficient work
-            require(uint(bounty[0].header.hash256()).reverseUint256() <= bountyTarget, "bounty: insufficient work");
-            // bounty reference block must have the same target as the mining block
-
-            // A single (BTC) retarget never changes the target by more than a factor of 4 either way to prevent large changes in difficulty.
-            // To support more re-targeting protocols and testnet, we limit to factor of 2 upward before triggering an expensive reward retarget.
-            bountyTarget /= target;
-            if (bountyTarget >= 2) { // bounty reference block target is too week
-                rewardRate /= bountyTarget;
+                // A single (BTC) retarget never changes the target by more than a factor of 4 either way to prevent large changes in difficulty.
+                // To support more re-targeting protocols and testnet, we limit to factor of 2 upward before triggering an expensive reward retarget.
+                bountyTarget /= target;
+                if (bountyTarget >= 2) { // bounty reference block target is too week
+                    rewardRate /= bountyTarget;
+                }
             }
-        }
 
-        uint multiplier;
-        (memoHash, multiplier) = _processMemo(opret, params.memoLength);
-        if (multiplier > 1) {
-            target /= multiplier;
-        }
-        // Require that the header has sufficient work
-        require(blockHash <= target, "insufficient work");
-        rewardRate /= target;
+            uint multiplier;
+            (memoHash, multiplier) = _processMemo(opret, params.memoLength);
+            if (multiplier > 1) {
+                target /= multiplier;
+            }
+            // Require that the header has sufficient work
+            require(blockHash <= target, "insufficient work");
+            rewardRate /= target;
         }
 
         Reward storage reward = rewards[bytes32(blockHash)][memoHash];
 
         // tx
-        { // stack too deep 
-        bytes32 txid = ValidateSPV.calculateTxId(params.version, params.vin, params.vout, params.locktime);
-        require(ValidateSPV.prove(txid, params.header.extractMerkleRootLE().toBytes32(), params.merkleProof, params.merkleIndex), "invalid merkle proof");
+        {
+            bytes32 txid = ValidateSPV.calculateTxId(params.version, params.vin, params.vout, params.locktime);
+            require(ValidateSPV.prove(txid, params.header.extractMerkleRootLE().toBytes32(), params.merkleProof, params.merkleIndex), "invalid merkle proof");
 
-        uint32 rank = uint32(bytes4(keccak256(abi.encodePacked(blockHash, txid))));
-        if (reward.rank != 0) {
-            require(rank < reward.rank, "taken");
-        }
-        reward.rank = rank;
+            uint32 rank = uint32(bytes4(keccak256(abi.encodePacked(blockHash, txid))));
+            if (reward.rank != 0) {
+                require(rank < reward.rank, "taken");
+            }
+            reward.rank = rank;
         }
 
         uint timestamp = params.header.extractTimestamp();
