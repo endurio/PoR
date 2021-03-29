@@ -352,8 +352,18 @@ contract("PoR", accounts => {
         // expect revert on claiming with fake reward
         const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
         const params = utils.paramsToClaim(mined)
-
         const miner = utils.minerToClaim(mined)
+
+        await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: miner.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, amount: params.amount+1}, {from: miner.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: miner.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, pkc: utils.isPKH(mined) ? DUMMY_HASH : ZERO_HASH}, {from: miner.address}), "#commitment");
+
+        const pubX = params.pubkey.substr(2, 64)
+        const pubY = params.pubkey.substr(66, 64)
+        const pubYsub2 = (BigInt('0x'+pubY)-2n).toString(16).padStart(64, '0')
+        await expectRevert(instPoR.claim({...params, pubkey: DUMMY_HASH+pubY}, {from: miner.address}), "#commitment");
+        await expectRevert(instPoR.claim({...params, pubkey: '0x'+pubX+pubYsub2}, {from: miner.address}), "!miner");
 
         {
           const claimer = utils.nonMinerToClaim(mined)
@@ -380,24 +390,24 @@ contract("PoR", accounts => {
           await send.ether(claimer.address, miner.address, 1, {from: claimer.address})
           await expectRevert(instPoR.claim({...params}, {from: claimer.address, gasPrice: 2}), "!miner");
           // claim with just enought miner balance
-          await instPoR.claim({...params}, {from: claimer.address, gasPrice: 1})
+          await expectEventClaim(instPoR.claim({...params}, {from: claimer.address, gasPrice: 1}), txHash, txData.miner);
 
           await snapshot.revert(ss)
         }
 
-        await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, amount: params.amount+1}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, pkc: utils.isPKH(mined) ? DUMMY_HASH : ZERO_HASH}, {from: miner.address}), "#commitment");
+        if (p2wshTxs.includes(txHash)) {
+          // honest claim
+          await expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner);
+        } else {
+          const ss = await snapshot.take()
+          await utils.claim(submitReceipt)
+          await snapshot.revert(ss)
 
-        const pubX = params.pubkey.substr(2, 64)
-        const pubY = params.pubkey.substr(66, 64)
-        const pubYsub2 = (BigInt('0x'+pubY)-2n).toString(16).padStart(64, '0')
-        await expectRevert(instPoR.claim({...params, pubkey: DUMMY_HASH+pubY}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, pubkey: '0x'+pubX+pubYsub2}, {from: miner.address}), "!miner");
-
-        // honest claim
-        await expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner);
+          // claim with witness instead
+          const claimer = utils.nonMinerToClaim(mined)
+          const witness = utils.extractWitness(txHash)
+          await expectEventClaim(instPoR.claim({...params, pubkey: params.pubkey + witness.toString('hex') }, {from: claimer.address}), txHash, txData.miner);
+        }
 
         // double claim
         await expectRevert(utils.claim(submitReceipt), "claimed");
