@@ -10,6 +10,8 @@ library CapMath {
     int256  constant MAX_INT256  = 0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
     int256  constant MIN_INT256  = MAX_INT256 + 1;
 
+    /// would not overflown with a <= b
+    ///
     /// @return x*a/b or x/b*a
     function checkedScale(uint x, uint a, uint b) internal pure returns (uint) {
         if (a == 0) {
@@ -20,7 +22,7 @@ library CapMath {
             return y / b;
         }
         // overflown
-        return x/b*a;   // overflowable
+        return x/b*a;   // overflowable: only if a > b
     }
 
     /**
