@@ -25,7 +25,7 @@ interface IERC20Events {
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract PoR is DataStructure, IERC20Events {
-    uint constant SUBMITTING_TIME = 1 hours;
+    uint constant SUBMITTING_TIME = 2 hours;
     uint constant BOUNTY_TIME = 1 hours;
     uint constant RECIPIENT_RATE = 32;
 
@@ -261,7 +261,7 @@ contract PoR is DataStructure, IERC20Events {
         }
 
         uint timestamp = params.header.extractTimestamp();
-        require(_submittable(timestamp), "submitting time over");
+        require(_submittable(timestamp), "too late");
         if (bounty.length > 0) {
             require(timestamp - bounty[0].header.extractTimestamp() <= BOUNTY_TIME, "bounty: block too old");
         }

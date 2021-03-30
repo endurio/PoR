@@ -277,17 +277,17 @@ contract("PoR", accounts => {
 
         { // snapshot scope
           const ss = await snapshot.take();
-          await time.increaseTo(block.timestamp + 60*60-30) // give the chain 30s tolerance
+          await time.increaseTo(block.timestamp + 2*60*60-30) // give the chain 30s tolerance
           await utils.submit(params, outpoint, bounty);
           await snapshot.revert(ss);
         }
 
         { // snapshot scope
           const ss = await snapshot.take();
-          await time.increaseTo(block.timestamp + 60*60)
+          await time.increaseTo(block.timestamp + 2*60*60)
           await expectRevert(
             utils.submit(params, outpoint, bounty),
-            'submitting time over',
+            'too late',
           );
           await snapshot.revert(ss);
         }
@@ -342,7 +342,7 @@ contract("PoR", accounts => {
         const txData = txs[txHash];
         const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
 
-        const targetTimestamp = block.timestamp + 60*60;
+        const targetTimestamp = block.timestamp + 2*60*60;
         if (await time.latest() < targetTimestamp) {
           await expectRevert(utils.claim(submitReceipt), "too soon");
           ++tooSoonTestsCount
