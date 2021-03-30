@@ -25,7 +25,9 @@ interface IERC20Events {
  * @dev implemetation class can't have any state variable, all state is located in DataStructure
  */
 contract PoR is DataStructure, IERC20Events {
-    uint constant SUBMITTING_TIME = 2 hours;
+    uint constant SUBMITTING_TIME_FOR_MINER = 1 hours;
+    uint constant SUBMITTING_TIME_FOR_ALL   = 1 hours;
+    uint constant SUBMITTING_TIME = SUBMITTING_TIME_FOR_MINER + SUBMITTING_TIME_FOR_ALL;
     uint constant BOUNTY_TIME = 1 hours;
     uint constant RECIPIENT_RATE = 32;
 
@@ -42,6 +44,8 @@ contract PoR is DataStructure, IERC20Events {
         address payer;
         uint    amount;
         uint    timestamp;
+        address submitter;
+        uint    submitTime;
         bool    skipCommission;
         bytes   pubkey;
     }
@@ -63,7 +67,11 @@ contract PoR is DataStructure, IERC20Events {
                 } else {
                     pkc = keccak256(_compressPK(params.pubkey));
                 }
-                require(commitment == bytes28(keccak256(abi.encodePacked(pkc, params.payer, params.amount, params.timestamp))), "#commitment");
+                bytes memory preimage = abi.encodePacked(pkc, params.payer, params.amount, params.timestamp);
+                if (params.submitter != address(0x0)) {
+                    preimage = abi.encodePacked(preimage, params.submitter, params.submitTime);
+                }
+                require(commitment == bytes28(keccak256(preimage)), "#commitment");
             }
         }
 
@@ -86,7 +94,27 @@ contract PoR is DataStructure, IERC20Events {
             }
         }
 
-        IRefNet(address(this)).reward(miner, params.payer, params.amount, params.memoHash, params.blockHash, params.skipCommission);
+        uint submitFee = 0;
+        if (params.submitter != address(0x0)) {
+            submitFee = CapMath.checkedScale(
+                params.amount,
+                params.submitTime - params.timestamp - SUBMITTING_TIME_FOR_MINER,
+                SUBMITTING_TIME_FOR_ALL
+            );
+            // assert(submitFee <= params.amount);
+            // IRefNet.reward will only pay the submitter if submitFee <= actual rewarded <= params.amount
+        }
+
+        IRefNet(address(this)).reward(
+            params.blockHash,
+            params.memoHash,
+            miner,
+            params.payer,
+            params.amount,
+            params.submitter,
+            submitFee,
+            params.skipCommission);
+
         delete rewards[params.blockHash][params.memoHash];
     }
 
@@ -269,7 +297,11 @@ contract PoR is DataStructure, IERC20Events {
         address payer = params.payer;
         uint amount = _getBrandReward(memoHash, payer, rewardRate);
 
-        reward.commitment = bytes28(keccak256(abi.encodePacked(pkc, payer, amount, timestamp)));
+        if (_submittableForMinerOnly(timestamp)) {
+            reward.commitment = bytes28(keccak256(abi.encodePacked(pkc, payer, amount, timestamp)));
+        } else {
+            reward.commitment = bytes28(keccak256(abi.encodePacked(pkc, payer, amount, timestamp, msg.sender, time.blockTimestamp())));
+        }
         emit Submit(bytes32(blockHash), memoHash, pkc, payer, amount, timestamp);
     }
 
@@ -335,6 +367,10 @@ contract PoR is DataStructure, IERC20Events {
      */
     function _submittable(uint timestamp) internal view returns (bool) {
         return time.elapse(timestamp) < SUBMITTING_TIME;
+    }
+
+    function _submittableForMinerOnly(uint timestamp) internal view returns (bool) {
+        return time.elapse(timestamp) < SUBMITTING_TIME_FOR_MINER;
     }
 
     // PKH from uncompressed, unprefixed 64-bytes pubic key

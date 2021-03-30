@@ -6,11 +6,13 @@ pragma solidity >=0.6.2;
 
 interface IRefNet {
     function reward(
+        bytes32 blockHash,    // this value will be hashed against memoHash to create an random number
+        bytes32 memoHash,
         address miner,
         address payer,
-        uint amount,
-        bytes32 memoHash,
-        bytes32 blockHash,  // this value will be hashed against memoHash to create an random number
-        bool skipCommission
+        uint    amount,
+        address submitter,
+        uint    submitFee,
+        bool    skipCommission
     ) external;
 }
