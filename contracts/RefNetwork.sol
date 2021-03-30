@@ -194,9 +194,8 @@ contract RefNetwork is DataStructure, Token, IRefNet {
 
         // there's always 1/32 chance that the raw commission will go to root
         if (uiSeed % ROOT_COM_RATE == 0) {
-            // reuse amount for actual rewarded amount
-            (amount,) = _payByBrand(memoHash, payer, config.root, amount);
-            emit CommissionRoot(payer, miner, amount);
+            (uint rootCom,) = _payByBrand(memoHash, payer, config.root, amount);
+            emit CommissionRoot(payer, miner, rootCom);
             return;
         }
 
