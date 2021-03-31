@@ -1,4 +1,3 @@
-require('it-each')({ testPerIteration: true });
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
@@ -66,6 +65,9 @@ contract("PoR: Bounty Mining", accounts => {
   })
 
   describe('bounty hunter', () => {
+    const payer = sender.address;
+    const payRate = 0.001;
+
     it("mine some coin", async() => {
       const miner = await mineSomeCoin()
       expect(utils.addressCompare(miner.address, sender.address)).to.equal(0, "should the miner address is the truffle test account")
@@ -80,112 +82,114 @@ contract("PoR: Bounty Mining", accounts => {
       await time.increaseTo(block.timestamp)
     })
 
-    const payRate = 0.001;
-
     it("activate new brand 'foobar'", async() => {
       const fund = 200000000000;
       await instBM.activate(FOOBAR, fund, decShift(payRate, 18), 0)
     })
 
     // TODO: bounty mining for endur.io
-    it("bounty mining", async() => {
-      const payer = sender.address;
+    const testingTxs = {
+      'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09': 'bounty: unacceptable recipient',
+      '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2': 'bounty: unacceptable recipient',
+      'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17': undefined,
+      'b32e72a5eb6c60d6b640e01749b459df83838b987e16fe594c0bdaba7668f7dd': 'bounty: dust output',
+      '8fc78e141b1e3ce488d4d06f387f4fb8a78f87b9b3949d7bfe2fb70d9a984444': undefined,
+      '2c0c3efedd5491d96b07928d8d9e4a2a7be4aa2645e13e7bcc2325fc67675b45': 'bounty: too many recipients',
+      '6a2652dbf94de4fd2bdfea0e3faf600683cfed30240e6acf0f281600e665ca3f': 'bounty: duplicate recipient',
+      'f648fc11f34150ce9841f1ad7cd22a7cf6ee394f1787d055d5a90c509d5213cc': 'bounty: duplicate recipient',
+      'a53fe9e6a9d7dcc4cda86af4d12e6632dd6f762abc084d21ba3b850e2a918ea2': 'bounty: sampling recipient has OP_RET',
+      '4ba472143eee31c4b0557682ee6f025c52fcaea8c5eac735be237021fd9f2724': 'bounty: dust output',
+      'e4957541a90d54d0b8d8e8262fbc4f33df8f490e524f9a240b34538346032410': 'bounty: block too old',
+      '1bd88cab82b0f38e086d63142a7d00dfa35d15273054ccd887e796e44d53093c': undefined,
+      'e7b9d9c81d0f5c2e15619dcfacccf9f961acdae549d58ef26b49574c7d041611': undefined,
+      'f93b20c7c44774c6d54f473cb3b1a81c569145a87afcfc5db0410a23f7e0be54': undefined,
+      '45502cf89a706abe375bc1adaa0952925c435f3e3d8a1aedc668d2203e9c2fc0': undefined,
+    }
 
-      const testingTxs = {
-        'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09': 'bounty: unacceptable recipient',
-        '73d229d9ca76efaf53d9fd1f361f054155d15b7d38244c9eaa2e292f6bc243f2': 'bounty: unacceptable recipient',
-        'bc9168e6cedd9cc8d422892482ac4bd7e99cd2f90b97ef4f7695480e166d3b17': undefined,
-        'b32e72a5eb6c60d6b640e01749b459df83838b987e16fe594c0bdaba7668f7dd': 'bounty: dust output',
-        '8fc78e141b1e3ce488d4d06f387f4fb8a78f87b9b3949d7bfe2fb70d9a984444': undefined,
-        '2c0c3efedd5491d96b07928d8d9e4a2a7be4aa2645e13e7bcc2325fc67675b45': 'bounty: too many recipients',
-        '6a2652dbf94de4fd2bdfea0e3faf600683cfed30240e6acf0f281600e665ca3f': 'bounty: duplicate recipient',
-        'f648fc11f34150ce9841f1ad7cd22a7cf6ee394f1787d055d5a90c509d5213cc': 'bounty: duplicate recipient',
-        'a53fe9e6a9d7dcc4cda86af4d12e6632dd6f762abc084d21ba3b850e2a918ea2': 'bounty: sampling recipient has OP_RET',
-        '4ba472143eee31c4b0557682ee6f025c52fcaea8c5eac735be237021fd9f2724': 'bounty: dust output',
-        'e4957541a90d54d0b8d8e8262fbc4f33df8f490e524f9a240b34538346032410': 'bounty: block too old',
-        '1bd88cab82b0f38e086d63142a7d00dfa35d15273054ccd887e796e44d53093c': undefined,
-        'e7b9d9c81d0f5c2e15619dcfacccf9f961acdae549d58ef26b49574c7d041611': undefined,
-        'f93b20c7c44774c6d54f473cb3b1a81c569145a87afcfc5db0410a23f7e0be54': undefined,
-        '45502cf89a706abe375bc1adaa0952925c435f3e3d8a1aedc668d2203e9c2fc0': undefined,
+    const multipleInputs = [
+      'f93b20c7c44774c6d54f473cb3b1a81c569145a87afcfc5db0410a23f7e0be54',
+    ]
+
+    for (const txHash of Object.keys(testingTxs)) {
+      const reason = testingTxs[txHash]
+      const reward = utils.getExpectedReward(txHash, payRate)
+
+      let desc = reason
+      if (!desc) {
+        desc = `${thousands(reward.base)} * 2x${reward.nBounty}` +
+          (reward.retarget ? ` / ${thousands(reward.retarget)}` : '') +
+          ` = ${thousands(reward.bounty)}`
       }
 
-      for (const txHash of Object.keys(testingTxs)) {
-        const reason = testingTxs[txHash]
+      it(`${txHash.slice(0, 4)}... ` + desc, () => testBounty(txHash, reason))
+    }
 
-        const brand = utils.guessMemo(txHash)
-        const memoHash = web3.utils.keccak256(Buffer.from(brand))
-        const txData = txs[txHash]
-        const reward = utils.getExpectedReward(txHash, payRate)
+    async function testBounty(txHash, reason) {
+      const brand = utils.guessMemo(txHash)
+      const memoHash = web3.utils.keccak256(Buffer.from(brand))
+      const txData = txs[txHash]
+      const reward = utils.getExpectedReward(txHash, payRate)
 
-        const recipient = txData.miner
+      const recipient = txData.miner
 
-        const nBounty = utils.countBounty(txHash)
-        expect((reward.base/(reward.retarget||1n)).toString()).equal((reward.bounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
-        
-        if (reason) {
-          console.log('          - ' + reason)
-        } else {
-          console.log(`          + ${thousands(reward.base)} * 2x${reward.nBounty}` +
-            (reward.retarget ? ` / ${thousands(reward.retarget)}` : '') +
-            ` = ${thousands(reward.bounty)}`)
-        }
+      const nBounty = utils.countBounty(txHash)
+      expect((reward.base/(reward.retarget||1n)).toString()).equal((reward.bounty/BigInt(2*nBounty)).toString(), 'reward with bounty rate')
+      
+      { // snapshot scope
+        const ss = await snapshot.take();
+        // submit without bounty
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer}, {}, {noBounty: true});
+        const submitReceipt = await utils.submit(params, outpoint, bounty)
+        await utils.timeToClaim(txHash)
+        expectEventClaim(await utils.claim(submitReceipt), recipient, reward.base, payer, memoHash)
+        await snapshot.revert(ss);
+      }
 
-        { // snapshot scope
-          const ss = await snapshot.take();
-          // submit without bounty
-          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer}, {}, {noBounty: true});
-          const submitReceipt = await utils.submit(params, outpoint, bounty)
-          await utils.timeToClaim(txHash)
-          expectEventClaim(await utils.claim(submitReceipt), recipient, reward.base, payer, memoHash)
-          await snapshot.revert(ss);
-        }
+      const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer});
 
-        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer});
+      if (reason) {
+        return expectRevert(utils.submit(params, outpoint, bounty), reason)
+      }
 
-        if (reason) {
-          await expectRevert(utils.submit(params, outpoint, bounty), reason)
+      // submit with bad bounty block header
+      await expectRevert(utils.submit(params, outpoint, [{
+        ...bounty[0],
+        header: bounty[0].header.substring(0,bounty[0].header.length-8) + '00000000',  // clear the 4-bytes nonce
+      }]), 'bounty: insufficient work')
+
+      // submit with bad merkle index
+      await expectRevert(utils.submit(params, outpoint, [{
+        ...bounty[0],
+        merkleIndex: bounty[0].merkleIndex+1,
+      }]), 'bounty: invalid merkle proof')
+
+      // submit with bad merkle proof
+      await expectRevert(utils.submit(params, outpoint, [{
+        ...bounty[0],
+        merkleProof: bounty[0].merkleProof.substring(0, bounty[0].merkleProof.length-2) + '00', // clear the last byte of the proof
+      }]), 'bounty: invalid merkle proof')
+      
+      // submit with bounty with each inputIndex availabe
+      const nIns = bitcoinjs.Transaction.fromHex(txData.hex).ins.length
+      let submitReceipt
+      for (let inputIndex = nIns-1; inputIndex >= 0; --inputIndex) {
+        if (inputIndex === 0) {
+          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex})
+          submitReceipt = await utils.submit(params, outpoint, bounty)
           continue
         }
-
-        // submit with bad bounty block header
-        await expectRevert(utils.submit(params, outpoint, [{
-          ...bounty[0],
-          header: bounty[0].header.substring(0,bounty[0].header.length-8) + '00000000',  // clear the 4-bytes nonce
-        }]), 'bounty: insufficient work')
-
-        // submit with bad merkle index
-        await expectRevert(utils.submit(params, outpoint, [{
-          ...bounty[0],
-          merkleIndex: bounty[0].merkleIndex+1,
-        }]), 'bounty: invalid merkle proof')
-
-        // submit with bad merkle proof
-        await expectRevert(utils.submit(params, outpoint, [{
-          ...bounty[0],
-          merkleProof: bounty[0].merkleProof.substring(0, bounty[0].merkleProof.length-2) + '00', // clear the last byte of the proof
-        }]), 'bounty: invalid merkle proof')
-        
-        // submit with bounty with each inputIndex availabe
-        const nIns = bitcoinjs.Transaction.fromHex(txData.hex).ins.length
-        let submitReceipt
-        for (let inputIndex = nIns-1; inputIndex >= 0; --inputIndex) {
-          if (inputIndex === 0) {
-            const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex})
-            submitReceipt = await utils.submit(params, outpoint, bounty)
-            continue
-          }
-          const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex})
-          const ss = await snapshot.take()
-          await utils.submit(params, outpoint, bounty)
-          await snapshot.revert(ss)
-          var hasInputIndexCase = true
-        }
-        await utils.timeToClaim(txHash)
-        expectEventClaim(await utils.claim(submitReceipt), recipient, reward.bounty, payer, memoHash)
+        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand, payer, inputIndex})
+        const ss = await snapshot.take()
+        await utils.submit(params, outpoint, bounty)
+        await snapshot.revert(ss)
+        var hasInputIndexCase = true
       }
-
-      expect(hasInputIndexCase, "should cover `inputIndex > 0` case").to.be.true
-    })
+      if (multipleInputs.includes(txHash)) {
+        expect(hasInputIndexCase, "should cover `inputIndex > 0` case").to.be.true
+      }
+      await utils.timeToClaim(txHash)
+      expectEventClaim(await utils.claim(submitReceipt), recipient, reward.bounty, payer, memoHash)
+    }
   })
 
   function expectEventClaim(receipt, recipient, reward, payer, memoHash) {

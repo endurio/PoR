@@ -1,15 +1,12 @@
-require('it-each')({ testPerIteration: true });
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
-const { expect, util } = require('chai');
+const { expect } = require('chai');
 const { time, expectRevert, expectEvent, send, balance } = require('@openzeppelin/test-helpers');
 const snapshot = require('./lib/snapshot');
 const utils = require('./lib/utils');
 const { thousands } = require('../tools/lib/big');
 
 const { keys, txs } = require('./data/all');
-const { strip0x } = require('./lib/utils');
-const ether = require('@openzeppelin/test-helpers/src/ether');
 const blocks = utils.loadBlockData()
 
 const Endurio = artifacts.require("Endurio");
@@ -29,7 +26,6 @@ const DUMMY_HASH = '0x0123456789012345678901234567890123456789012345678901234567
 
 contract("PoR", accounts => {
   expect(accounts[0]).to.equal(keys[0].address, 'should the first keys data is the sender account');
-  const sender = keys[0];
 
   before('should chain time be in the past', async () => {
     const chainTimestamp = Number(await time.latest())
@@ -60,7 +56,7 @@ contract("PoR", accounts => {
     expect(utils.inst, 'utils contract instances not initialized').to.not.be.null
   })
 
-  describe('x-mining', () => {
+  describe('x-mining', async() => {
     const tests = [{
       desc: 'x3',
       tx: '3ef4453b2cfff417c4c37e3fa2ec0922162262d49ffe5d43f8c010709cfb4b11',
@@ -113,36 +109,43 @@ contract("PoR", accounts => {
       expect: {},
     }]
 
-    it.each(tests, "%s", ['desc'], async (test, next) => {
-      const ss = await snapshot.take();
-      await testXMine(test.tx, test.params, test.expect);
-      next();
-      await snapshot.revert(ss);
-    })
+    for (const test of tests) {
+      const reward = utils.getExpectedReward(test.tx, test.params.multiplier)
 
-    async function testXMine(txHash, {memoLength, multiplier}, {submitRevert, claimRevert}) {
+      const desc = `${thousands(reward.base)}` + (
+        !reward.nBounty ? '' : ` * 2x${reward.nBounty}` +
+          (!reward.retarget ? '' : ` / ${thousands(reward.retarget)}`) +
+          ` = ${thousands(reward.bounty)}`
+      )
+
+      it(`${test.desc} = ${desc}`, () => testXMine(test.tx, test.params, test.expect, reward))
+    }
+
+    async function testXMine(txHash, {memoLength, multiplier}, {submitRevert, claimRevert}, reward) {
       const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
       if (memoLength != null) {
         params.memoLength = memoLength;
       }
 
-      const promise = utils.submit(params, outpoint, bounty)
-
       if (submitRevert) {
-        return expectRevert(promise, submitRevert);
+        return expectRevert(utils.submit(params, outpoint, bounty), submitRevert);
       }
 
-      const submitReceipt = await promise;
+      const ss = await snapshot.take();
+
+      const submitReceipt = await utils.submit(params, outpoint, bounty);
 
       await utils.timeToClaim(txHash)
       const txData = txs[txHash]
 
       if (claimRevert) {
-        return expectRevert(utils.claim(submitReceipt), claimRevert);
+        await expectRevert(utils.claim(submitReceipt), claimRevert);
+      } else {
+        await expectEventClaim(utils.claim(submitReceipt), txData.miner, reward);
       }
 
-      return expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner, multiplier);
+      await snapshot.revert(ss);
     }
   })
 
@@ -251,183 +254,195 @@ contract("PoR", accounts => {
     })
   })
 
-  describe('sticky', () => {
-    const submitReceipts = {}
+  const submitReceipts = {}
 
-    it("submit txs", async() => {
-      const testingTxs = [
-        '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
-        'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
-        '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
-        'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
-        'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
-        '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
-        '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
-        '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
-      ]
+  describe('submit', () => {
+    const testingTxs = [
+      '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
+      'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
+      '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
+      'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a',
+      'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
+      '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+      '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
+      '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
+    ]
 
-      for (const txHash of testingTxs) {
-        const txData = txs[txHash]
-        const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
-        const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
+    for (const txHash of testingTxs) {
+      it(`${txHash.slice(0, 4)}...`, () => testSubmit(txHash))
+    }
 
-        await expectRevert(utils.submit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
+    async function testSubmit(txHash) {
+      const txData = txs[txHash]
+      const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
+      const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
-        await expectRevert(utils.submit({...params, merkleProof: '0x'+params.merkleProof.slice(66)}, outpoint, bounty), 'invalid merkle proof');
+      await expectRevert(utils.submit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
 
-        { // snapshot scope
-          const ss = await snapshot.take();
-          await time.increaseTo(block.timestamp + 2*60*60-30) // give the chain 30s tolerance
-          await utils.submit(params, outpoint, bounty);
-          await snapshot.revert(ss);
-        }
+      await expectRevert(utils.submit({...params, merkleProof: '0x'+params.merkleProof.slice(66)}, outpoint, bounty), 'invalid merkle proof');
 
-        { // snapshot scope
-          const ss = await snapshot.take();
-          await time.increaseTo(block.timestamp + 2*60*60)
-          await expectRevert(
-            utils.submit(params, outpoint, bounty),
-            'too late',
-          );
-          await snapshot.revert(ss);
-        }
+      { // snapshot scope
+        const ss = await snapshot.take();
+        await time.increaseTo(block.timestamp + 2*60*60-30) // give the chain 30s tolerance
+        await utils.submit(params, outpoint, bounty);
+        await snapshot.revert(ss);
+      }
 
-        const tx = bitcoinjs.Transaction.fromHex(txData.hex)
+      { // snapshot scope
+        const ss = await snapshot.take();
+        await time.increaseTo(block.timestamp + 2*60*60)
+        await expectRevert(
+          utils.submit(params, outpoint, bounty),
+          'too late',
+        );
+        await snapshot.revert(ss);
+      }
 
-        const ss = await snapshot.take()
-        const promise = utils.submit({...params, inputIndex: 1}, outpoint, bounty)
-        if (tx.ins.length == 1) {
-          await expectRevert(promise, 'Vin read overrun')
+      const tx = bitcoinjs.Transaction.fromHex(txData.hex)
+
+      const ss = await snapshot.take()
+      const promise = utils.submit({...params, inputIndex: 1}, outpoint, bounty)
+      if (tx.ins.length == 1) {
+        await expectRevert(promise, 'Vin read overrun')
+      } else {
+        if (outpoint.length == 1 && !tx.ins[0].hash.equals(tx.ins[1].hash)) {
+          await expectRevert(promise, 'outpoint mismatch')
         } else {
-          if (outpoint.length == 1 && !tx.ins[0].hash.equals(tx.ins[1].hash)) {
-            await expectRevert(promise, 'outpoint mismatch')
-          } else {
-            await promise
-          }
+          await promise
         }
+      }
+      await snapshot.revert(ss)
+
+      // submit with bad header
+      await expectRevert(utils.submit({
+        ...params,
+        header: params.header.substring(0,params.header.length-8) + '00000000',  // clear the 4-bytes nonce
+      }, outpoint, bounty), 'insufficient work')
+
+      // correct data
+      submitReceipts[txHash] = await utils.submit(params, outpoint, bounty);
+    }
+  })
+
+  describe('claim', () => {
+    const testingTxs = [
+      'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
+      '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
+    //'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a', // missing miner key?
+      'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
+      '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+      '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
+      '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
+      '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
+    ]
+
+    const p2wshTxs = [
+      '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+    ]
+
+    const tooSoonTxs = [
+      'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
+      'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
+      '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
+      '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
+      '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
+    ]
+
+    for (const txHash of testingTxs) {
+      const reward = utils.getExpectedReward(txHash);
+
+      const desc = `${thousands(reward.base)}` + (
+        !reward.nBounty ? '' : ` * 2x${reward.nBounty}` +
+          (!reward.retarget ? '' : ` / ${thousands(reward.retarget)}`) +
+          ` = ${thousands(reward.bounty)}`
+      )
+    
+      it(`${txHash.slice(0, 4)}... = ${desc}`, () => testClaim(txHash, reward))
+    }
+
+    async function testClaim(txHash, reward) {
+      const submitReceipt = submitReceipts[txHash]
+      expect(submitReceipt, 'should the transaction have a submit receipt').to.be.not.null
+
+      const txData = txs[txHash];
+      const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+
+      const targetTimestamp = block.timestamp + 2*60*60;
+      if (await time.latest() < targetTimestamp) {
+        expect(tooSoonTxs.includes(txHash), 'should be `too soon`').to.be.true
+        await expectRevert(utils.claim(submitReceipt), "too soon");
+        await utils.timeToClaim(txHash);
+      } else {
+        expect(tooSoonTxs.includes(txHash), 'should not be `too soon`').to.be.false
+      }
+
+      // expect revert on claiming with fake reward
+      const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
+      const params = utils.paramsToClaim(mined)
+      const miner = utils.minerToClaim(mined)
+
+      await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: miner.address}), "#commitment");
+      await expectRevert(instPoR.claim({...params, amount: params.amount+1}, {from: miner.address}), "#commitment");
+      await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: miner.address}), "#commitment");
+      await expectRevert(instPoR.claim({...params, pkc: utils.isPKH(mined) ? DUMMY_HASH : ZERO_HASH}, {from: miner.address}), "#commitment");
+
+      const pubX = params.pubkey.substr(2, 64)
+      const pubY = params.pubkey.substr(66, 64)
+      const pubYsub2 = (BigInt('0x'+pubY)-2n).toString(16).padStart(64, '0')
+      await expectRevert(instPoR.claim({...params, pubkey: DUMMY_HASH+pubY}, {from: miner.address}), "#commitment");
+      await expectRevert(instPoR.claim({...params, pubkey: '0x'+pubX+pubYsub2}, {from: miner.address}), "!miner");
+
+      {
+        const claimer = utils.nonMinerToClaim(mined)
+        const ss = await snapshot.take()
+
+        // exhaust the miner balance first
+        const minerBalance = (await balance.current(miner.address))-21000
+        await send.ether(miner.address, claimer.address, minerBalance, {from: miner.address, gasPrice: 1})
+        expect((await balance.current(miner.address)).toNumber()).equals(0, 'miner balance should be fully exhausted by now')
+        await expectRevert(instPoR.claim({...params}, {from: claimer.address}), "!miner");
+
+        if (!p2wshTxs.includes(txHash)) {
+          const witness = utils.extractWitness(txHash)
+          await expectRevert(instPoR.claim({...params, pubkey: params.pubkey + Buffer.from(witness).reverse().toString('hex')}, {from: claimer.address}), "#witness");
+          const ss = await snapshot.take()
+          await instPoR.claim({...params, pubkey: params.pubkey + witness.toString('hex') }, {from: claimer.address})
+          await snapshot.revert(ss)
+        }
+
+        // claim with miner has dust balance
+        await send.ether(claimer.address, miner.address, 21000-1, {from: claimer.address})
+        await expectRevert(instPoR.claim({...params}, {from: claimer.address, gasPrice: 1}), "!miner");
+        // claim with high gas price
+        await send.ether(claimer.address, miner.address, 1, {from: claimer.address})
+        await expectRevert(instPoR.claim({...params}, {from: claimer.address, gasPrice: 2}), "!miner");
+        // claim with just enought miner balance
+        await expectEventClaim(instPoR.claim({...params}, {from: claimer.address, gasPrice: 1}), txData.miner, reward);
+
+        await snapshot.revert(ss)
+      }
+
+      if (p2wshTxs.includes(txHash)) {
+        // honest claim
+        await expectEventClaim(utils.claim(submitReceipt), txData.miner, reward);
+      } else {
+        const ss = await snapshot.take()
+        await utils.claim(submitReceipt)
         await snapshot.revert(ss)
 
-        // submit with bad header
-        await expectRevert(utils.submit({
-          ...params,
-          header: params.header.substring(0,params.header.length-8) + '00000000',  // clear the 4-bytes nonce
-        }, outpoint, bounty), 'insufficient work')
-
-        // correct data
-        submitReceipts[txHash] = await utils.submit(params, outpoint, bounty);
-      }
-    })
-
-    it("claim", async() => {
-      const testingTxs = [
-        'c7016e7816b6f0eeb3dba660266e42c3b7780c657ce5bfd196f216df9ad38d3c',
-        '18603113e8d4d78f6de668f8abfd8d38747b030329116aa59df889a27e5a867a',
-      //'f37d569b7d940e687e55bad5f56341dd1b82ac0047fa6e6346c06ef0cbecbd8a', // missing miner key?
-        'c67326c89d8dc0cfdb10be00983236702fef8246234d7a3ecfa6cb6ac01c9d78',
-        '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
-        '9da4809c20689edf1874a47f8b9c60adbcd888400eb46b368cd21cdbe2517e5d',
-        '42cd88e6dc4aa56ea823ea4aee6b5276a7164134d9c001ea0547c850e1cae8b1',
-        '2251a6f442369cfae9bc3f6f5d09389feb6ca3e8599443a059d84fb3be4da7ac',
-      ]
-      const p2wshTxs = [
-        '9f3c5b61aec0d0df4a6271f3cde21c2f661489b7be0afbd9b326223646467e7f',
-      ]
-      const ownMinerTests = {}
-      let tooSoonTestsCount = 0
-
-      for (const txHash of testingTxs) {
-        const submitReceipt = submitReceipts[txHash]
-        expect(submitReceipt, 'should the transaction have a submit receipt').to.be.not.null
-
-        const txData = txs[txHash];
-        const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
-
-        const targetTimestamp = block.timestamp + 2*60*60;
-        if (await time.latest() < targetTimestamp) {
-          await expectRevert(utils.claim(submitReceipt), "too soon");
-          ++tooSoonTestsCount
-          await utils.timeToClaim(txHash);
-        }
-
-        // expect revert on claiming with fake reward
-        const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
-        const params = utils.paramsToClaim(mined)
-        const miner = utils.minerToClaim(mined)
-
-        await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, amount: params.amount+1}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, timestamp: params.timestamp-1}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, pkc: utils.isPKH(mined) ? DUMMY_HASH : ZERO_HASH}, {from: miner.address}), "#commitment");
-
-        const pubX = params.pubkey.substr(2, 64)
-        const pubY = params.pubkey.substr(66, 64)
-        const pubYsub2 = (BigInt('0x'+pubY)-2n).toString(16).padStart(64, '0')
-        await expectRevert(instPoR.claim({...params, pubkey: DUMMY_HASH+pubY}, {from: miner.address}), "#commitment");
-        await expectRevert(instPoR.claim({...params, pubkey: '0x'+pubX+pubYsub2}, {from: miner.address}), "!miner");
-
-        {
-          const claimer = utils.nonMinerToClaim(mined)
-          const ss = await snapshot.take()
-
-          // exhaust the miner balance first
-          const minerBalance = (await balance.current(miner.address))-21000
-          await send.ether(miner.address, claimer.address, minerBalance, {from: miner.address, gasPrice: 1})
-          expect((await balance.current(miner.address)).toNumber()).equals(0, 'miner balance should be fully exhausted by now')
-          await expectRevert(instPoR.claim({...params}, {from: claimer.address}), "!miner");
-
-          if (!p2wshTxs.includes(txHash)) {
-            const witness = utils.extractWitness(txHash)
-            await expectRevert(instPoR.claim({...params, pubkey: params.pubkey + Buffer.from(witness).reverse().toString('hex')}, {from: claimer.address}), "#witness");
-            const ss = await snapshot.take()
-            await instPoR.claim({...params, pubkey: params.pubkey + witness.toString('hex') }, {from: claimer.address})
-            await snapshot.revert(ss)
-          }
-
-          // claim with miner has dust balance
-          await send.ether(claimer.address, miner.address, 21000-1, {from: claimer.address})
-          await expectRevert(instPoR.claim({...params}, {from: claimer.address, gasPrice: 1}), "!miner");
-          // claim with high gas price
-          await send.ether(claimer.address, miner.address, 1, {from: claimer.address})
-          await expectRevert(instPoR.claim({...params}, {from: claimer.address, gasPrice: 2}), "!miner");
-          // claim with just enought miner balance
-          await expectEventClaim(instPoR.claim({...params}, {from: claimer.address, gasPrice: 1}), txHash, txData.miner);
-
-          await snapshot.revert(ss)
-        }
-
-        if (p2wshTxs.includes(txHash)) {
-          // honest claim
-          await expectEventClaim(utils.claim(submitReceipt), txHash, txData.miner);
-        } else {
-          const ss = await snapshot.take()
-          await utils.claim(submitReceipt)
-          await snapshot.revert(ss)
-
-          // claim with witness instead
-          const claimer = utils.nonMinerToClaim(mined)
-          const witness = utils.extractWitness(txHash)
-          await expectEventClaim(instPoR.claim({...params, pubkey: params.pubkey + witness.toString('hex') }, {from: claimer.address}), txHash, txData.miner);
-        }
-
-        // double claim
-        await expectRevert(utils.claim(submitReceipt), "claimed");
+        // claim with witness instead
+        const claimer = utils.nonMinerToClaim(mined)
+        const witness = utils.extractWitness(txHash)
+        await expectEventClaim(instPoR.claim({...params, pubkey: params.pubkey + witness.toString('hex') }, {from: claimer.address}), txData.miner, reward);
       }
 
-      expect(tooSoonTestsCount).to.be.gt(0, "should test data cover `too soon` case");
-    })
-
+      // double claim
+      await expectRevert(utils.claim(submitReceipt), "claimed");
+    }
   })
 })
 
-async function expectEventClaim(call, txHash, miner, multiplier) {
-  const reward = utils.getExpectedReward(txHash, multiplier);
-
-  console.log(`          + ${thousands(reward.base)}` + (
-    !reward.nBounty ? '' : ` * 2x${reward.nBounty}` +
-      (!reward.retarget ? '' : ` / ${thousands(reward.retarget)}`) +
-      ` = ${thousands(reward.bounty)}`)
-  )
-
+async function expectEventClaim(call, miner, reward) {
   const commission = reward.base / BigInt(2);
 
   const receipt = await call;

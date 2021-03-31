@@ -1728,11 +1728,6 @@ dom-walk@^0.1.0:
   resolved "https://registry.yarnpkg.com/dom-walk/-/dom-walk-0.1.1.tgz#672226dc74c8f799ad35307df936aba11acd6018"
   integrity sha1-ZyIm3HTI95mtNTB9+TaroRrNYBg=
 
-dot-notes@3.1.1:
-  version "3.1.1"
-  resolved "https://registry.yarnpkg.com/dot-notes/-/dot-notes-3.1.1.tgz#7ae7e1a948134529f3768b2fb13f4c8fa92a57cf"
-  integrity sha1-eufhqUgTRSnzdosvsT9Mj6kqV88=
-
 drbg.js@^1.0.1:
   version "1.0.1"
   resolved "https://registry.yarnpkg.com/drbg.js/-/drbg.js-1.0.1.tgz#3e36b6c42b37043823cdbc332d58f31e2445480b"
@@ -3269,13 +3264,6 @@ isurl@^1.0.0-alpha5:
   dependencies:
     has-to-string-tag-x "^1.2.0"
     is-object "^1.0.1"
-
-it-each@^0.4.0:
-  version "0.4.0"
-  resolved "https://registry.yarnpkg.com/it-each/-/it-each-0.4.0.tgz#d7bd0538766471e77e0d22034ab91c252ca834c4"
-  integrity sha512-fbOxSUiOByQnkgoFUEKPfzAuoUZ0mQRAXdWWsfI53gMJZ2oyhPcJBOCFx8yuMM36yP6OUUL3LgilYEqBiSACmQ==
-  dependencies:
-    dot-notes "3.1.1"
 
 iterate-iterator@^1.0.1:
   version "1.0.1"

@@ -1,4 +1,3 @@
-require('it-each')({ testPerIteration: true });
 const moment = require('moment');
 const bitcoinjs = require('bitcoinjs-lib');
 const { expect } = require('chai');
