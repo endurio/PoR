@@ -5,8 +5,6 @@ const bitcoinjs = require('bitcoinjs-lib');
 const { decShift } = require('../../tools/lib/big');
 const { time, expectRevert } = require('@openzeppelin/test-helpers');
 const ethers = require('ethers')
-const Web3 = require('web3')
-const web3 = new Web3()
 
 const { txs, keys } = require('../data/all');
 

@@ -6,8 +6,6 @@ const snapshot = require('./lib/snapshot');
 const utils = require('./lib/utils');
 const colors = require('colors');
 const { decShift } = require('../tools/lib/big');
-const Web3 = require('web3')
-const web3 = new Web3()
 
 const { keys, txs } = require('./data/all');
 const { ZERO_BYTES32 } = require('@openzeppelin/test-helpers/src/constants');
