@@ -301,6 +301,7 @@ contract PoR is DataStructure, IERC20Events {
             reward.commitment = bytes28(keccak256(abi.encodePacked(pkc, payer, amount, timestamp)));
         } else {
             reward.commitment = bytes28(keccak256(abi.encodePacked(pkc, payer, amount, timestamp, msg.sender, time.blockTimestamp())));
+            emit SubmitBy(msg.sender, time.blockTimestamp());
         }
         emit Submit(bytes32(blockHash), memoHash, pkc, payer, amount, timestamp);
     }
