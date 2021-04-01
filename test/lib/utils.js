@@ -137,10 +137,10 @@ module.exports = {
 
   async timeToClaim(txHash) {
     const txData = txs[txHash]
-    const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
+    const block = this.getBlock(txData.block)
     const target = block.timestamp + 2*60*60
     if (await time.latest() < target) {
-      return time.increaseTo(target)
+      return await time.increaseTo(target)
     }
   },
 

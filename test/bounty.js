@@ -76,7 +76,7 @@ contract("PoR: Bounty Mining", accounts => {
     it("ready the chain time", async() => {
       const txHash = 'e79262b32f1514104ba1895ab881c62f11e355bd449d0918180dc86e2b184d09'
       const txData = txs[txHash]
-      const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+      const block = utils.getBlock(txData.block);
       await time.increaseTo(block.timestamp)
     })
 

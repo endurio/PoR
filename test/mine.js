@@ -274,7 +274,7 @@ contract("PoR", accounts => {
 
     async function testSubmit(txHash) {
       const txData = txs[txHash]
-      const block = bitcoinjs.Block.fromHex(blocks[txData.block].substring(0, 160));
+      const block = utils.getBlock(txData.block);
       const {params, outpoint, bounty} = utils.prepareSubmit({txHash, brand: ENDURIO});
 
       await expectRevert(utils.submit({...params, merkleIndex: params.merkleIndex+1}, outpoint, bounty), 'invalid merkle proof');
@@ -365,7 +365,7 @@ contract("PoR", accounts => {
       expect(submitReceipt, 'should the transaction have a submit receipt').to.be.not.null
 
       const txData = txs[txHash];
-      const block = bitcoinjs.Block.fromHex(blocks[txData.block]);
+      const block = utils.getBlock(txData.block);
 
       const targetTimestamp = block.timestamp + 2*60*60;
       if (await time.latest() < targetTimestamp) {
