@@ -294,21 +294,22 @@ module.exports = {
 
   claim(submitReceipt) {
     const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
-    const key = this.minerToClaim(mined)
-    const params = this.paramsToClaim(mined)
-    return instPoR.claim(params, {from: key.address});
+    const miner = this.minerToClaim(mined)
+    const params = this.paramsToClaim(submitReceipt)
+    return instPoR.claim(params, {from: miner.address})
   },
 
-  paramsToClaim(mined) {
-    if (mined.logs) {
-      mined = mined.logs.find(log => log.event === 'Submit').args
-    }
+  paramsToClaim(submitReceipt) {
+    const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
     const { blockHash, memoHash, pkc, payer, value, timestamp } = mined;
+    const submitBy = submitReceipt.logs.find(log => log.event === 'SubmitBy')
     const key = this.minerToClaim(mined)
     const params = {
       blockHash, memoHash, payer,
       amount: value.toString(),
       timestamp: timestamp.toString(),
+      submitter: submitBy ? submitBy.args.submitter : ZERO_ADDRESS,
+      submitTime: submitBy ? submitBy.args.submitTime.toString() : 0,
       pkc,
       pubkey: '0x'+key.public,
       skipCommission: false,

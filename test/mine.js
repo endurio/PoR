@@ -378,7 +378,7 @@ contract("PoR", accounts => {
 
       // expect revert on claiming with fake reward
       const mined = submitReceipt.logs.find(log => log.event === 'Submit').args
-      const params = utils.paramsToClaim(mined)
+      const params = utils.paramsToClaim(submitReceipt)
       const miner = utils.minerToClaim(mined)
 
       await expectRevert(instPoR.claim({...params, payer: DUMMY_ADDRESS}, {from: miner.address}), "#commitment");

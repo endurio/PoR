@@ -68,6 +68,10 @@ contract DataStructure {
         uint            value,
         uint            timestamp
     );
+    event SubmitBy(
+        address         submitter,
+        uint            submitTime
+    );
     event Claim(
         bytes32 indexed blockHash,
         bytes32 indexed memoHash,

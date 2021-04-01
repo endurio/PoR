@@ -173,18 +173,26 @@ contract RefNetwork is DataStructure, Token, IRefNet {
     }
 
     function reward(
+        bytes32 blockHash,
+        bytes32 memoHash,
         address miner,
         address payer,
-        uint amount,
-        bytes32 memoHash,
-        bytes32 blockHash,
-        bool skipCommission
+        uint    amount,
+        address submitter,
+        uint    submitFee,
+        bool    skipCommission
     ) external override {
         require(msg.sender == address(this), "!internal");  // must be called from other implemenetation
 
         {
             (uint rewarded, bool empty) = _payByBrand(memoHash, payer, miner, amount);
             emit Claim(blockHash, memoHash, miner, payer, rewarded);
+
+            // pay the submit fee
+            if (submitter != address(0x0) && submitFee <= rewarded) {
+                _transfer(miner, submitter, submitFee);
+            }
+
             if (empty) {
                 return;  // brand has no more fund to pay for commission
             }
